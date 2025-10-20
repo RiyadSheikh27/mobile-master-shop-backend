@@ -1,0 +1,72 @@
+API Endpoints:
+
+1. Phone Brands:
+   - GET /api/brands/ - List all active brands
+   - GET /api/brands/{id}/ - Get brand details
+
+2. Phone Models:
+   - GET /api/models/ - List all active models
+   - GET /api/models/?brand={brand_id} - Filter models by brand
+   - GET /api/models/{id}/ - Get model details
+
+3. Phone Problems:
+   - GET /api/problems/ - List all active repair problems
+
+4. Repair Prices:
+   - GET /api/repair-prices/?phone_model={model_id} - Get available repairs for a model (grouped by problem)
+   - GET /api/repair-prices/{id}/ - Get specific repair price details
+   - POST /api/repair-prices/calculate_price/ - Calculate total price for selected repairs
+     Body: {
+       "phone_model_id": 1,
+       "items": [
+         {"problem_id": 1, "part_type": "original"},
+         {"problem_id": 2, "part_type": "duplicate"}
+       ],
+       "website_discount_percentage": 5.00,
+       "website_discount_amount": 0.00
+     }
+
+5. Orders:
+   - GET /api/orders/ - List orders (user's own if authenticated)
+   - GET /api/orders/?status={status} - Filter by status
+   - GET /api/orders/?payment_status={payment_status} - Filter by payment status
+   - GET /api/orders/{id}/ - Get order details
+   - POST /api/orders/ - Create new order
+     Body: {
+       "phone_model_id": 1,
+       "customer_name": "John Doe",
+       "customer_email": "john@example.com",
+       "customer_phone": "+1234567890",
+       "items": [
+         {"problem_id": 1, "part_type": "original"},
+         {"problem_id": 2, "part_type": "duplicate"}
+       ],
+       "notes": "Optional notes",
+       "website_discount_percentage": 5.00,
+       "website_discount_amount": 0.00
+     }
+   - POST /api/orders/{id}/confirm/ - Confirm order (sets warranty dates)
+   - POST /api/orders/{id}/cancel/ - Cancel order
+   - GET /api/orders/{id}/track/ - Track order status
+
+User Flow Example:
+1. GET /api/brands/ → User selects Apple
+2. GET /api/models/?brand=1 → User selects iPhone 11
+3. GET /api/repair-prices/?phone_model=5 → User sees available repairs grouped by problem
+   Response: [
+     {
+       "problem_id": 1,
+       "problem_name": "Screen Replacement",
+       "problem_icon": "screen",
+       "estimated_time": 60,
+       "original": {price details...},
+       "duplicate": {price details...}
+     },
+     ...
+   ]
+4. User selects repairs and part types
+5. POST /api/repair-prices/calculate_price/ → Preview total price
+6. POST /api/orders/ → Create order
+7. User proceeds to payment (Stripe integration)
+8. GET /api/orders/{id}/track/ → Track order status
+"""
