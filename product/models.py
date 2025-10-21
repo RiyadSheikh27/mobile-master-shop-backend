@@ -35,7 +35,7 @@ class PhoneModel(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-release_year', 'name']
+        ordering = ['-created_at']
         unique_together = ['brand', 'name']
         verbose_name = 'Phone Model'
         verbose_name_plural = 'Phone Models'
@@ -346,3 +346,30 @@ class OrderItem(models.Model):
         if self.order.confirmed_at:
             from datetime import timedelta
             self.warranty_expires_at = (self.order.confirmed_at + timedelta(days=self.warranty_days)).date()
+
+
+class WebsiteDiscount(models.Model):
+    """Fixed website discount applied automatically to all orders"""
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Fixed discount amount"
+    )
+    percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Percentage discount applied to subtotal after item discounts"
+    )
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Website Discount"
+        verbose_name_plural = "Website Discounts"
+
+    def __str__(self):
+        return f"Website Discount: {self.percentage}% + {self.amount} fixed"

@@ -12,9 +12,12 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+load_dotenv(BASE_DIR / '.env')
 
 GOOGLE_OAUTH_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 
@@ -25,7 +28,7 @@ SECRET_KEY = 'django-insecure-m$*dz^9hz_71p7j!)yx)f%yv9mb1l+6h16&nc4n9er7_oi=3$&
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -46,6 +49,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'corsheaders',
+    'drf_yasg',
 
     'api',
     'accounts',
@@ -112,7 +116,7 @@ MIDDLEWARE = [
     'allauth.account.middleware.AccountMiddleware',
 ]
 
-ORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = True
 
 ROOT_URLCONF = 'app.urls'
 
@@ -166,17 +170,39 @@ WSGI_APPLICATION = 'app.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'postgres',
+#         'USER': 'apple',
+#         'PASSWORD': 'postgresql@123',
+#         'HOST': 'localhost',
+#         'PORT': '5432',
+#     }
+# }
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'railway',
+        'USER': 'postgres',
+        'PASSWORD': 'DMlcIJXwgcHgsscyQMihEbkzPJnAJjUR',
+        'HOST': 'mainline.proxy.rlwy.net',
+        'PORT': '41512',
     }
 }
 
-CORS_ALLOWED_ORIGINS = [
-       "http://localhost:3000",
-       "http://localhost:5173",
-   ]
+
+# CORS_ALLOWED_ORIGINS = [
+#        "http://localhost:3000",
+#        "http://localhost:5173",
+#    ]
 
 
 # Password validation
@@ -218,6 +244,10 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 CKEDITOR_UPLOAD_PATH = "uploads/" 
+
+STATICFILES_DIRS = [os.path.join(BASE_DIR, "static")] 
+
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")     
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

@@ -11,4 +11,5 @@ admin.site.register(PhoneProblem)
 admin.site.register(RepairPrice)
 admin.site.register(Order)
 admin.site.register(OrderItem)
+admin.site.register(WebsiteDiscount)
 

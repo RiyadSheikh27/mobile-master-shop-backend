@@ -7,6 +7,7 @@ router.register(r'models', PhoneModelViewSet, basename='phonemodel')
 router.register(r'problems', PhoneProblemViewSet, basename='phoneproblem')
 router.register(r'repair-prices', RepairPriceViewSet, basename='repairprice')
 router.register(r'orders', OrderViewSet, basename='order')
+router.register(r'discounts', DiscountViewSet, basename='websitediscount')
 
 urlpatterns = [
     path('', include(router.urls)),

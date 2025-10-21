@@ -9,7 +9,8 @@ from .models import *
 from .serializers import *
 
 
-class PhoneBrandViewSet(viewsets.ReadOnlyModelViewSet):
+class PhoneBrandViewSet(viewsets.ModelViewSet):
+    queryset = PhoneBrand.objects.all()
     serializer_class = PhoneBrandSerializer
     permission_classes = [AllowAny]
 
@@ -27,7 +28,7 @@ class PhoneBrandViewSet(viewsets.ReadOnlyModelViewSet):
         }, status=status.HTTP_200_OK)
 
 
-class PhoneModelViewSet(viewsets.ReadOnlyModelViewSet):
+class PhoneModelViewSet(viewsets.ModelViewSet):
     """
     ViewSet for phone models
     - List models (optionally filtered by brand)
@@ -43,72 +44,122 @@ class PhoneModelViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = PhoneModel.objects.filter(is_active=True).select_related('brand')
         
-        # Filter by brand if provided
         brand_id = self.request.query_params.get('brand', None)
         if brand_id:
             queryset = queryset.filter(brand_id=brand_id)
         return queryset
+    
+class DiscountViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for website discounts
+    - List all active discounts
+    """
+    serializer_class = WebsiteDiscountSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        return WebsiteDiscount.objects.filter(is_active=True)
 
 
-class PhoneProblemViewSet(viewsets.ReadOnlyModelViewSet):
+class PhoneProblemViewSet(viewsets.ModelViewSet):
     """
     ViewSet for phone problems/repair types
     - List all active problems
     """
     serializer_class = PhoneProblemSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
         return PhoneProblem.objects.filter(is_active=True)
 
 
-class RepairPriceViewSet(viewsets.ReadOnlyModelViewSet):
+class RepairPriceViewSet(viewsets.ModelViewSet):
     """
     ViewSet for repair prices
-    - Get available repairs for a phone model
-    - Returns grouped by problem with original and duplicate options
+    - List available repairs grouped by problem (GET)
+    - Calculate total price for selected items (POST)
     """
     serializer_class = RepairPriceSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
-        queryset = RepairPrice.objects.filter(is_active=True).select_related(
-            'phone_model', 'problem'
-        )
-        
-        # Filter by phone model (required for list action)
-        phone_model_id = self.request.query_params.get('phone_model', None)
-        if phone_model_id:
-            queryset = queryset.filter(phone_model_id=phone_model_id)
-        
-        return queryset
+        return RepairPrice.objects.filter(is_active=True).select_related('phone_model', 'problem')
 
     def list(self, request, *args, **kwargs):
         """
         List repair prices grouped by problem
-        Query params: phone_model (required)
+        Query params:
+        - phone_model: id of the phone model (optional if brand provided)
+        - brand: id of the brand (optional if phone_model provided)
         """
-        phone_model_id = request.query_params.get('phone_model', None)
-        
-        if not phone_model_id:
+        phone_model_id = request.query_params.get('phone_model')
+        brand_id = request.query_params.get('brand')
+
+        queryset = self.get_queryset()
+
+        if phone_model_id:
+            queryset = queryset.filter(phone_model_id=phone_model_id)
+        elif brand_id:
+            queryset = queryset.filter(phone_model__brand_id=brand_id)
+
+        if not queryset.exists():
             return Response(
-                {"error": "phone_model_id is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "No repair prices found for the given phone model or brand"},
+                status=status.HTTP_404_NOT_FOUND
             )
 
+        # Group by problem
+        problems_dict = {}
+        for repair_price in queryset:
+            problem_id = repair_price.problem.id
+            if problem_id not in problems_dict:
+                problems_dict[problem_id] = {
+                    'problem_id': problem_id,
+                    'problem_name': repair_price.problem.name,
+                    'problem_icon': repair_price.problem.icon,
+                    'problem_description': repair_price.problem.description,
+                    'estimated_time': repair_price.problem.estimated_time,
+                    'original': None,
+                    'duplicate': None
+                }
+            problems_dict[problem_id][repair_price.part_type] = RepairPriceSerializer(repair_price).data
+
+        return Response(list(problems_dict.values()), status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def calculate_price(self, request):
+        """
+        Calculate total price for selected repairs
+        Body:
+        {
+            "phone_model_id": 1,
+            "items": [
+                {"problem_id": 1, "part_type": "original"},
+                {"problem_id": 2, "part_type": "duplicate"}
+            ],
+            "website_discount_percentage": 5.00,
+            "website_discount_amount": 0.00
+        }
+        """
+        phone_model_id = request.data.get('phone_model_id')
+        items_data = request.data.get('items', [])
+        # website_discount_percentage = Decimal(str(request.data.get('website_discount_percentage', '0.00')))
+        # website_discount_amount = Decimal(str(request.data.get('website_discount_amount', '0.00')))
+
+        if not phone_model_id:
+            return Response({"error": "phone_model_id is required"}, status=status.HTTP_400_BAD_REQUEST)
         if not items_data:
-            return Response(
-                {"error": "items list is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "items list is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             phone_model = PhoneModel.objects.get(id=phone_model_id, is_active=True)
         except PhoneModel.DoesNotExist:
-            return Response(
-                {"error": "Invalid or inactive phone model"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Invalid or inactive phone model"}, status=status.HTTP_400_BAD_REQUEST)
+
+        website_discount_obj = WebsiteDiscount.objects.filter(is_active=True).first()
+        website_discount_percentage = website_discount_obj.percentage if website_discount_obj else Decimal('0.00')
+        website_discount_amount = website_discount_obj.amount if website_discount_obj else Decimal('0.00')
+
 
         # Calculate pricing
         subtotal = Decimal('0.00')
@@ -126,7 +177,6 @@ class RepairPriceViewSet(viewsets.ReadOnlyModelViewSet):
                     part_type=part_type,
                     is_active=True
                 )
-
                 base_price = repair_price.base_price
                 final_price = repair_price.final_price
                 discount = base_price - final_price
@@ -150,16 +200,13 @@ class RepairPriceViewSet(viewsets.ReadOnlyModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        # Calculate price after item discounts
+        # Price after item discounts
         price_after_items = subtotal - item_discount
 
         # Apply website discount
-        website_discount = Decimal('0.00')
-        if website_discount_percentage > 0:
-                website_discount = price_after_items * (website_discount_percentage / Decimal('100'))
-        website_discount += website_discount_amount
+        website_discount = (price_after_items * (website_discount_percentage / Decimal('100'))) + website_discount_amount
 
-        # Calculate final total
+        # Final total
         total_amount = max(price_after_items - website_discount, Decimal('0.00'))
         total_discount = subtotal - total_amount
 
@@ -175,8 +222,7 @@ class RepairPriceViewSet(viewsets.ReadOnlyModelViewSet):
             'total_amount': str(total_amount),
             'total_discount': str(total_discount),
             'items': items_breakdown
-        })
-
+        }, status=status.HTTP_200_OK)
 
 class OrderViewSet(viewsets.ModelViewSet):
     """

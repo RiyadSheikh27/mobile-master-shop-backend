@@ -1,23 +1,25 @@
 from rest_framework import serializers
-from .models import PhoneBrand, PhoneModel, PhoneProblem, RepairPrice, Order, OrderItem
+from .models import *
 from decimal import Decimal
 
 
 class PhoneBrandSerializer(serializers.ModelSerializer):
     """Serializer for phone brands"""
-    
     class Meta:
         model = PhoneBrand
         fields = ['id', 'name', 'logo', 'is_active', 'created_at']
-        read_only_fields = ['created_at']
+        read_only_fields = ['is_active']
 
 class PhoneModelListSerializer(serializers.ModelSerializer):
     """Serializer for phone model list"""
     brand_name = serializers.CharField(source='brand.name', read_only=True)
     
+    
     class Meta:
         model = PhoneModel
         fields = ['id', 'name', 'brand', 'brand_name', 'image', 'is_active']
+        read_only_fields = ['is_active']
+
 
 
 class PhoneModelDetailSerializer(serializers.ModelSerializer):
@@ -55,11 +57,12 @@ class RepairPriceSerializer(serializers.ModelSerializer):
     class Meta:
         model = RepairPrice
         fields = [
-            'id', 'problem', 'problem_name', 'problem_icon', 'problem_description',
+            'id', 'phone_model', 'problem', 'problem_name', 'problem_icon', 'problem_description',
             'part_type', 'base_price', 'discount_percentage', 'discount_amount',
             'final_price', 'total_discount', 'in_stock', 'warranty_days',
             'estimated_time', 'is_active'
         ]
+        read_only_fields = ['is_active', 'in_stock']
 
 
 class RepairPriceGroupedSerializer(serializers.Serializer):
@@ -213,3 +216,10 @@ class PriceCalculationSerializer(serializers.Serializer):
         default=Decimal('0.00'),
         required=False
     )
+
+class WebsiteDiscountSerializer(serializers.ModelSerializer):
+    """Serializer for website discounts"""
+    class Meta:
+        model = WebsiteDiscount
+        fields = ['id', 'percentage', 'amount', 'is_active', 'created_at']
+        read_only_fields = ['is_active', 'created_at']
