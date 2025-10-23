@@ -13,8 +13,8 @@ class PhoneBrand(models.Model):
     slug = models.SlugField(max_length=100, unique=True, blank=True)
     icon = models.ImageField(upload_to='new-phone-brand', null=True, blank=True)
     description = CKEditor5Field('Text', config_name='default')
-    is_active = models.DateTimeField(default=timezone.now)
-    created_at = models.DateTimeField(default=timezone.now)
+    # is_active = models.BooleanField(default=True)
+    # # created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         verbose_name_plural = "Brands"
