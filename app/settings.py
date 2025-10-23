@@ -50,11 +50,41 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.google',
     'corsheaders',
     'drf_yasg',
+    "django_ckeditor_5",
 
     'api',
     'accounts',
     'product',
+    'newphone',
 ]
+
+CKEDITOR_5_UPLOAD_PATH = "uploads/"
+CKEDITOR_5_CONFIGS = {
+    'default': {
+        'toolbar': [
+            {'items': [
+                'heading', '|',
+                'bold', 'italic', 'underline', 'link', 'code', '|',
+                'bulletedList', 'numberedList', '|',
+                'blockQuote', 'insertTable', 'imageUpload', '|',
+                'undo', 'redo'
+            ]},
+        ],
+        'image': {
+            'toolbar': [
+                'imageTextAlternative', 'imageStyle:full', 'imageStyle:side'
+            ]
+        },
+        'table': {
+            'contentToolbar': [
+                'tableColumn', 'tableRow', 'mergeTableCells'
+            ]
+        },
+        'height': 300,
+        'width': '100%',
+    }
+}
+
 
 AUTH_USER_MODEL = 'accounts.User'
 SITE_ID = 1

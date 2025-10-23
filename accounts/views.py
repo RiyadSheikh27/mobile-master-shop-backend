@@ -153,7 +153,18 @@ class LoginView(APIView):
         if not user.email_verified:
             return Response({"error": "Email not verified"}, status=403)
 
-        return Response({"message": "Login successful", "tokens": tokens_for_user(user)}, status=200)
+        return Response(
+            {
+                "message": "Login successful",
+                "user": {
+                    "name": user.username,
+                    "email": user.email
+                },
+                "tokens": tokens_for_user(user),
+            },
+            status=200
+        )
+        
 
 
 """OAuth Register View - Using Access Token"""

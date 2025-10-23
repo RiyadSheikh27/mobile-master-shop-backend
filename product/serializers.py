@@ -7,18 +7,18 @@ class PhoneBrandSerializer(serializers.ModelSerializer):
     """Serializer for phone brands"""
     class Meta:
         model = PhoneBrand
-        fields = ['id', 'name', 'logo', 'is_active', 'created_at']
-        read_only_fields = ['is_active']
+        fields = ['id', 'name', 'slug', 'logo', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['is_active', 'slug', 'updated_at', 'created_at']
 
 class PhoneModelListSerializer(serializers.ModelSerializer):
     """Serializer for phone model list"""
     brand_name = serializers.CharField(source='brand.name', read_only=True)
-    
-    
+    brand = serializers.SlugRelatedField(slug_field='slug', queryset=PhoneBrand.objects.filter(is_active=True))
+
     class Meta:
         model = PhoneModel
-        fields = ['id', 'name', 'brand', 'brand_name', 'image', 'is_active']
-        read_only_fields = ['is_active']
+        fields = ['id', 'name', 'brand', 'brand_name', 'image', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['is_active', 'created_at', 'updated_at']
 
 
 
@@ -42,8 +42,8 @@ class PhoneProblemSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = PhoneProblem
-        fields = ['id', 'name', 'description', 'icon', 'estimated_time']
-
+        fields = ['id', 'name', 'description', 'icon', 'estimated_time', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['is_active', 'created_at', 'updated_at']
 
 class RepairPriceSerializer(serializers.ModelSerializer):
     """Serializer for repair prices with calculated fields"""
@@ -60,9 +60,9 @@ class RepairPriceSerializer(serializers.ModelSerializer):
             'id', 'phone_model', 'problem', 'problem_name', 'problem_icon', 'problem_description',
             'part_type', 'base_price', 'discount_percentage', 'discount_amount',
             'final_price', 'total_discount', 'in_stock', 'warranty_days',
-            'estimated_time', 'is_active'
+            'estimated_time', 'is_active', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['is_active', 'in_stock']
+        read_only_fields = ['is_active', 'in_stock', 'created_at', 'updated_at']
 
 
 class RepairPriceGroupedSerializer(serializers.Serializer):
@@ -93,9 +93,9 @@ class OrderItemSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'problem', 'problem_name', 'problem_icon', 'part_type',
             'base_price', 'discount_percentage', 'discount_amount', 'final_price',
-            'item_discount', 'warranty_days', 'warranty_expires_at', 'notes'
+            'item_discount', 'warranty_days', 'warranty_expires_at', 'notes', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['warranty_expires_at']
+        read_only_fields = ['warranty_expires_at', 'created_at', 'updated_at']
 
 
 class OrderCreateSerializer(serializers.Serializer):

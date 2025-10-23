@@ -3,6 +3,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.contrib.auth import get_user_model
 from decimal import Decimal
 import uuid
+from django.utils.text import slugify
 
 User = get_user_model()
 
@@ -10,6 +11,7 @@ User = get_user_model()
 class PhoneBrand(models.Model):
     """Phone brand model (e.g., Apple, Samsung)"""
     name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True, blank=True)
     logo = models.ImageField(upload_to='brand_logos/', null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -20,9 +22,10 @@ class PhoneBrand(models.Model):
         verbose_name = 'Phone Brand'
         verbose_name_plural = 'Phone Brands'
 
-    def __str__(self):
-        return self.name
-
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        return super().save(*args, **kwargs)
 
 class PhoneModel(models.Model):
     """Phone model (e.g., iPhone 15 Pro Max)"""
