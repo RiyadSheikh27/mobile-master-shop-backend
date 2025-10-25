@@ -8,13 +8,13 @@ from django.utils import timezone
 
 User = get_user_model()
 
-class PhoneBrand(models.Model):
+class NewPhoneBrand(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True, blank=True)
     icon = models.ImageField(upload_to='new-phone-brand', null=True, blank=True)
     description = CKEditor5Field('Text', config_name='default')
-    # is_active = models.BooleanField(default=True)
-    # # created_at = models.DateTimeField(default=timezone.now)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         verbose_name_plural = "Brands"
@@ -27,21 +27,21 @@ class PhoneBrand(models.Model):
             base_slug = slugify(self.name)
             slug = base_slug
             counter = 1
-            while PhoneBrand.objects.filter(slug=slug).exists():
+            while NewPhoneBrand.objects.filter(slug=slug).exists():
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
         super().save(*args, **kwargs)
 
-class PhoneColor(models.Model):
+class NewPhoneColor(models.Model):
     name = models.CharField(max_length=50, unique=True)
     hex_code = models.CharField(max_length=7, unique=True)
 
     def __str__(self):
         return self.name
 
-class PhoneModel(models.Model):
-    brand = models.ForeignKey(PhoneBrand, on_delete=models.CASCADE, related_name='phone_models')
+class NewPhoneModel(models.Model):
+    brand = models.ForeignKey(NewPhoneBrand, on_delete=models.CASCADE, related_name='phone_models')
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True, blank=True)
     icon = models.ImageField(upload_to='new-phone-model', null=True, blank=True)
@@ -51,7 +51,7 @@ class PhoneModel(models.Model):
     discounted_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     description_title = CKEditor5Field('Text', config_name='default', null=True, blank=True)
     description = CKEditor5Field('Text', config_name='default', null=True, blank=True)
-    color = models.ManyToManyField(PhoneColor, blank=True)
+    color = models.ManyToManyField(NewPhoneColor, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(default=timezone.now)
     
@@ -70,7 +70,7 @@ class PhoneModel(models.Model):
             self.slug = slugify(self.name)
         super().save(*args, **kwargs)
 
-class Order(models.Model):
+class NewPhoneOrder(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('confirmed', 'Confirmed'),
@@ -88,7 +88,7 @@ class Order(models.Model):
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    phone_model = models.ForeignKey(PhoneModel, on_delete=models.CASCADE)
+    phone_model = models.ForeignKey(NewPhoneModel, on_delete=models.CASCADE)
     customer_name = models.CharField(max_length=200)
     customer_email = models.EmailField()
     customer_phone = models.CharField(max_length=20)
@@ -106,7 +106,7 @@ class Order(models.Model):
         return f"Order {self.id} - {self.customer_name}"
 
 
-class ShopReview(models.Model):
+class NewPhoneReview(models.Model):
     Customer_name = models.CharField(max_length=100)
     Customer_email = models.EmailField()
     review = models.TextField()

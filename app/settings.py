@@ -55,7 +55,7 @@ INSTALLED_APPS = [
     'api',
     'accounts',
     'product',
-    'newphone',
+    'brandNew',
 ]
 
 CKEDITOR_5_UPLOAD_PATH = "uploads/"
@@ -217,6 +217,7 @@ WSGI_APPLICATION = 'app.wsgi.application'
 #         'PORT': '5432',
 #     }
 # }
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',

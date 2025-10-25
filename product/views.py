@@ -127,7 +127,7 @@ class RepairPriceViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = RepairPriceSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         return RepairPrice.objects.filter(is_active=True).select_related(
