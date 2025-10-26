@@ -158,7 +158,8 @@ class LoginView(APIView):
                 "message": "Login successful",
                 "user": {
                     "name": user.username,
-                    "email": user.email
+                    "email": user.email,
+                    "role": user.role,
                 },
                 "tokens": tokens_for_user(user),
             },

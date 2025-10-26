@@ -56,7 +56,15 @@ INSTALLED_APPS = [
     'accounts',
     'product',
     'brandNew',
+    'accessories',
 ]
+SWAGGER_SETTINGS = {
+    'DEFAULT_MODEL_NAME_FUNCTION': lambda serializer: f"{serializer.__module__}.{serializer.__class__.__name__}"
+}
+
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_51SKt7eIzTYoXma53pXJrtFefi7TbAsipJlUegWZvYf6bFFGaSfhDHCVuVElU5kgVhKAQzu8a2sIWZnSPwkPbtg2d00DJWaL2Mx')
+STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', 'pk_test_51SKt7eIzTYoXma53SGBAyxwQuu3rWCWKF1b73aSuCmAdePLZTJHybIrnNNLqaeLNkqDyuURchGShP1Nd3iwIt0TH008bzQlKpY')
+# STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', 'your_webhook_secret')
 
 CKEDITOR_5_UPLOAD_PATH = "uploads/"
 CKEDITOR_5_CONFIGS = {

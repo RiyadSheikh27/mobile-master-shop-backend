@@ -591,7 +591,6 @@ class OrderViewSet(viewsets.ModelViewSet):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-        # Get all repair prices for the phone model
         repair_prices = self.get_queryset().filter(phone_model_id=phone_model_id)
 
         # Group by problem

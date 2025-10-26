@@ -7,7 +7,7 @@ from django.db.models import Q
 from decimal import Decimal
 from .models import *
 from .serializers import *
-from accounts.permissions import IsAdmin, IsUser, IsOwnerOrReadOnly
+from accounts.permissions import IsAdmin
 import stripe
 from django.conf import settings
 from django.utils import timezone
@@ -16,30 +16,53 @@ from django.utils import timezone
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
-# ==================== BRAND VIEWSET ====================
-class PhoneBrandViewSet(viewsets.ModelViewSet):
-    serializer_class = PhoneBrandSerializer
+# ==================== PRODUCT VIEWSET ====================
+class AcsProductViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
-    lookup_field = 'slug'
+    lookup_field = 'pk'
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return AcsProductDetailSerializer
+        elif self.action in ['create', 'update', 'partial_update']:
+            return AcsProductCreateUpdateSerializer
+        return AcsProductListSerializer
 
     def get_queryset(self):
-        return NewPhoneBrand.objects.filter(is_active=True).prefetch_related('phone_models')
+        queryset = AcsProduct.objects.filter(is_active=True).prefetch_related('reviews')
+        
+        in_stock = self.request.query_params.get('in_stock')
+        if in_stock and in_stock.lower() == 'true':
+            queryset = queryset.filter(stock_quantity__gt=0)
+        
+        featured = self.request.query_params.get('featured')
+        if featured and featured.lower() == 'true':
+            queryset = queryset.filter(is_featured=True)
+        
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) | 
+                Q(subtitle__icontains=search)
+            )
+        
+        return queryset.order_by('-created_at')
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return Response({
             'success': True,
-            'message': 'Phone brands retrieved successfully',
+            'message': 'Accessories retrieved successfully',
             'data': serializer.data
         }, status=status.HTTP_200_OK)
-    
+
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return Response({
             'success': True,
-            'message': 'Phone brand retrieved successfully',
+            'message': 'Accessory details retrieved successfully',
             'data': serializer.data
         }, status=status.HTTP_200_OK)
 
@@ -49,7 +72,7 @@ class PhoneBrandViewSet(viewsets.ModelViewSet):
             serializer.save()
             return Response({
                 'success': True,
-                'message': 'Phone brand created successfully',
+                'message': 'Accessory created successfully',
                 'data': serializer.data
             }, status=status.HTTP_201_CREATED)
         return Response({
@@ -66,7 +89,7 @@ class PhoneBrandViewSet(viewsets.ModelViewSet):
             serializer.save()
             return Response({
                 'success': True,
-                'message': 'Phone brand updated successfully',
+                'message': 'Accessory updated successfully',
                 'data': serializer.data
             }, status=status.HTTP_200_OK)
         return Response({
@@ -80,85 +103,14 @@ class PhoneBrandViewSet(viewsets.ModelViewSet):
         instance.delete()
         return Response({
             'success': True,
-            'message': 'Phone brand deleted successfully',
+            'message': 'Accessory deleted successfully',
             'data': None
         }, status=status.HTTP_200_OK)
 
 
-# ==================== COLOR VIEWSET ====================
-class PhoneColorViewSet(viewsets.ModelViewSet):
-    queryset = NewPhoneColor.objects.all()
-    serializer_class = PhoneColorSerializer
-    permission_classes = [AllowAny]
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'success': True,
-            'message': 'Colors retrieved successfully',
-            'data': serializer.data
-        }, status=status.HTTP_200_OK)
-
-
-# ==================== PHONE MODEL VIEWSET ====================
-class NewPhoneModelViewSet(viewsets.ModelViewSet):
-    permission_classes = [AllowAny]
-    lookup_field = 'pk'
-
-    def get_serializer_class(self):
-        if self.action == 'retrieve':
-            return PhoneModelDetailSerializer
-        elif self.action in ['create', 'update', 'partial_update']:
-            return PhoneModelCreateUpdateSerializer
-        return PhoneModelListSerializer
-
-    def get_queryset(self):
-        queryset = NewPhoneModel.objects.filter(is_active=True).select_related('brand').prefetch_related('colors', 'reviews')
-        
-        brand_slug = self.request.query_params.get('brand')
-        if brand_slug:
-            queryset = queryset.filter(brand__slug=brand_slug)
-        
-        in_stock = self.request.query_params.get('in_stock')
-        if in_stock and in_stock.lower() == 'true':
-            queryset = queryset.filter(stock_quantity__gt=0)
-        
-        featured = self.request.query_params.get('featured')
-        if featured and featured.lower() == 'true':
-            queryset = queryset.filter(is_featured=True)
-        
-        search = self.request.query_params.get('search')
-        if search:
-            queryset = queryset.filter(
-                Q(name__icontains=search) | 
-                Q(brand__name__icontains=search)
-            )
-        
-        return queryset.order_by('-created_at')
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'success': True,
-            'message': 'Phone models retrieved successfully',
-            'data': serializer.data
-        }, status=status.HTTP_200_OK)
-
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return Response({
-            'success': True,
-            'message': 'Phone details retrieved successfully',
-            'data': serializer.data
-        }, status=status.HTTP_200_OK)
-
-
 # ==================== DISCOUNT VIEWSET ====================
-class WebsiteDiscountViewSet(viewsets.ModelViewSet):
-    serializer_class = WebsiteDiscountSerializer
+class AcsWebsiteDiscountViewSet(viewsets.ModelViewSet):
+    serializer_class = AcsWebsiteDiscountSerializer
     
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'get_active']:
@@ -166,7 +118,7 @@ class WebsiteDiscountViewSet(viewsets.ModelViewSet):
         return [AllowAny()]
 
     def get_queryset(self):
-        return WebsiteDiscount.objects.all().order_by('-created_at')
+        return AcsWebsiteDiscount.objects.all().order_by('-created_at')
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -180,7 +132,7 @@ class WebsiteDiscountViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], permission_classes=[AllowAny])
     def get_active(self, request):
         """Get currently active discount"""
-        discount = WebsiteDiscount.objects.filter(is_active=True).first()
+        discount = AcsWebsiteDiscount.objects.filter(is_active=True).first()
         
         if discount:
             serializer = self.get_serializer(discount)
@@ -198,7 +150,7 @@ class WebsiteDiscountViewSet(viewsets.ModelViewSet):
 
 
 # ==================== ORDER VIEWSET ====================
-class NewPhoneOrderViewSet(viewsets.ModelViewSet):
+class AcsOrderViewSet(viewsets.ModelViewSet):
     
     def get_permissions(self):
         if self.action == 'create':
@@ -209,17 +161,15 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action == 'create':
-            return NewPhoneOrderCreateSerializer
+            return AcsOrderCreateSerializer
         elif self.action == 'list':
-            return NewPhoneOrderListSerializer
+            return AcsOrderListSerializer
         elif self.action in ['update', 'partial_update']:
-            return NewPhoneOrderUpdateSerializer
-        return NewPhoneOrderSerializer
+            return AcsOrderUpdateSerializer
+        return AcsOrderSerializer
 
     def get_queryset(self):
-        queryset = NewPhoneOrder.objects.select_related(
-            'user', 'phone_model__brand', 'selected_color'
-        ).prefetch_related('phone_model__colors')
+        queryset = AcsOrder.objects.select_related('user', 'product')
 
         # Non-admin users see only their orders
         if self.request.user.is_authenticated and not hasattr(self.request.user, 'is_admin'):
@@ -259,32 +209,24 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """Create order and initiate Stripe payment"""
-        serializer = NewPhoneOrderCreateSerializer(data=request.data)
+        serializer = AcsOrderCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
         data = serializer.validated_data
         
-        # Get phone model
-        phone_model = NewPhoneModel.objects.select_related('brand').get(
-            id=data['phone_model_id']
-        )
-        
-        # Get color if provided
-        selected_color = None
-        if data.get('color_id'):
-            selected_color = NewPhoneColor.objects.get(id=data['color_id'])
-        
+        # Get product
+        product = AcsProduct.objects.get(id=data['product_id'])
         quantity = data.get('quantity', 1)
         
         # Check stock
-        if phone_model.stock_quantity < quantity:
+        if product.stock_quantity < quantity:
             return Response({
                 'success': False,
-                'message': f'Only {phone_model.stock_quantity} units available'
+                'message': f'Only {product.stock_quantity} units available'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Get active discount (from WebsiteDiscount model)
-        active_discount = WebsiteDiscount.objects.filter(is_active=True).first()
+        # Get active discount
+        active_discount = AcsWebsiteDiscount.objects.filter(is_active=True).first()
         website_discount_percentage = Decimal('0.00')
         website_discount_amount = Decimal('0.00')
         
@@ -292,11 +234,11 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             website_discount_percentage = active_discount.percentage
             website_discount_amount = active_discount.amount
         
-        # Calculate shipping (you can modify this logic)
+        # Calculate shipping
         shipping_cost = Decimal('100.00')  # Flat rate
         
-        # Calculate prices before creating order
-        unit_price = phone_model.final_price
+        # Calculate prices
+        unit_price = product.final_price
         subtotal = unit_price * quantity
         
         # Calculate discount
@@ -309,11 +251,10 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
         total_amount = subtotal - discount + shipping_cost
         total_amount = max(total_amount, Decimal('0.00'))
         
-        # Create order with calculated total_amount
-        order = NewPhoneOrder.objects.create(
+        # Create order
+        order = AcsOrder.objects.create(
             user=request.user if request.user.is_authenticated else None,
-            phone_model=phone_model,
-            selected_color=selected_color,
+            product=product,
             quantity=quantity,
             customer_name=data['customer_name'],
             customer_email=data['customer_email'],
@@ -327,7 +268,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             website_discount_percentage=website_discount_percentage,
             website_discount_amount=website_discount_amount,
             shipping_cost=shipping_cost,
-            total_amount=total_amount,  # Set total_amount here
+            total_amount=total_amount,
             notes=data.get('notes', ''),
             status='pending',
             payment_status='pending'
@@ -343,13 +284,13 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                     'order_number': order.order_number,
                     'customer_email': order.customer_email
                 },
-                description=f"Order {order.order_number} - {phone_model.name}"
+                description=f"Order {order.order_number} - {product.title}"
             )
             
             order.stripe_payment_intent_id = payment_intent.id
             order.save()
             
-            output_serializer = NewPhoneOrderSerializer(order)
+            output_serializer = AcsOrderSerializer(order)
             
             return Response({
                 'success': True,
@@ -400,11 +341,11 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                     order.save()
                     
                     # Reduce stock
-                    phone_model = order.phone_model
-                    phone_model.stock_quantity -= order.quantity
-                    phone_model.save()
+                    product = order.product
+                    product.stock_quantity -= order.quantity
+                    product.save()
                 
-                serializer = NewPhoneOrderSerializer(order)
+                serializer = AcsOrderSerializer(order)
                 return Response({
                     'success': True,
                     'message': 'Payment confirmed successfully',
@@ -452,9 +393,9 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             
             # Restore stock if order was confirmed
             if order.status == 'confirmed':
-                phone_model = order.phone_model
-                phone_model.stock_quantity += order.quantity
-                phone_model.save()
+                product = order.product
+                product.stock_quantity += order.quantity
+                product.save()
             
             order.status = 'cancelled'
             order.save()
@@ -469,19 +410,19 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def calculate_price(self, request):
         """Calculate order price before creating order"""
-        serializer = PriceCalculationSerializer(data=request.data)
+        serializer = AcsPriceCalculationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
         data = serializer.validated_data
-        phone_model = NewPhoneModel.objects.get(id=data['phone_model_id'])
+        product = AcsProduct.objects.get(id=data['product_id'])
         quantity = data.get('quantity', 1)
         
         # Calculate subtotal
-        unit_price = phone_model.final_price
+        unit_price = product.final_price
         subtotal = unit_price * quantity
         
         # Get active discount
-        active_discount = WebsiteDiscount.objects.filter(is_active=True).first()
+        active_discount = AcsWebsiteDiscount.objects.filter(is_active=True).first()
         website_discount_percentage = Decimal('0.00')
         website_discount_amount = Decimal('0.00')
         
@@ -506,8 +447,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             'success': True,
             'message': 'Price calculated successfully',
             'data': {
-                'phone_model': phone_model.name,
-                'brand': phone_model.brand.name,
+                'product': product.title,
                 'unit_price': str(unit_price),
                 'quantity': quantity,
                 'subtotal': str(subtotal),
@@ -521,17 +461,17 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
 
 
 # ==================== REVIEW VIEWSET ====================
-class PhoneReviewViewSet(viewsets.ModelViewSet):
-    serializer_class = PhoneReviewSerializer
+class AcsReviewViewSet(viewsets.ModelViewSet):
+    serializer_class = AcsReviewSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        queryset = NewPhoneReview.objects.select_related('phone_model__brand')
+        queryset = AcsReview.objects.select_related('product')
         
-        # Filter by phone model
-        phone_id = self.request.query_params.get('phone_model')
-        if phone_id:
-            queryset = queryset.filter(phone_model_id=phone_id)
+        # Filter by product
+        product_id = self.request.query_params.get('product')
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
         
         return queryset.order_by('-created_at')
 
@@ -575,3 +515,4 @@ class PhoneReviewViewSet(viewsets.ModelViewSet):
             'success': True,
             'message': 'Review deleted successfully'
         }, status=status.HTTP_200_OK)
+    

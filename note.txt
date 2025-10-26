@@ -70,3 +70,6 @@ User Flow Example:
 7. User proceeds to payment (Stripe integration)
 8. GET /api/orders/{id}/track/ → Track order status
 """
+
+
+https://claude.ai/share/acb106f9-89b3-4bad-832e-ecc9230a7832

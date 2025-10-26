@@ -10,58 +10,12 @@ import uuid
 User = get_user_model()
 
 
-class NewPhoneBrand(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    slug = models.SlugField(max_length=100, unique=True, blank=True)
-    icon = models.ImageField(upload_to='new-phone-brand/', null=True, blank=True)
-    description = CKEditor5Field('Text', config_name='default', blank=True)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name_plural = "New Phone Brands"
-        ordering = ['name']
-
-    def __str__(self):
-        return self.name
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            base_slug = slugify(self.name)
-            slug = base_slug
-            counter = 1
-            while NewPhoneBrand.objects.filter(slug=slug).exclude(pk=self.pk).exists():
-                slug = f"{base_slug}-{counter}"
-                counter += 1
-            self.slug = slug
-        super().save(*args, **kwargs)
-
-
-class NewPhoneColor(models.Model):
-    name = models.CharField(max_length=50, unique=True)
-    hex_code = models.CharField(max_length=7, help_text="Color hex code (e.g., #FF5733)")
-
-    class Meta:
-        verbose_name_plural = "Phone Colors"
-        ordering = ['name']
-
-    def __str__(self):
-        return self.name
-
-
-class NewPhoneModel(models.Model):
-    brand = models.ForeignKey(
-        NewPhoneBrand, 
-        on_delete=models.CASCADE, 
-        related_name='phone_models'
-    )
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(max_length=120, unique=True, blank=True)
-    icon = models.ImageField(upload_to='new-phone-model/', null=True, blank=True)
-    
-    ram = models.CharField(max_length=20, null=True, blank=True, help_text="e.g., 8GB")
-    memory = models.CharField(max_length=25, null=True, blank=True, help_text="e.g., 128GB")
+class AcsProduct(models.Model):
+    """Accessories Product Model"""
+    title = models.CharField(max_length=200)
+    subtitle = models.CharField(max_length=300, blank=True)
+    slug = models.SlugField(max_length=250, unique=True, blank=True)
+    picture = models.ImageField(upload_to='accessories/', null=True, blank=True)
     
     main_amount = models.DecimalField(
         max_digits=10, 
@@ -76,15 +30,10 @@ class NewPhoneModel(models.Model):
         help_text="Discounted price (optional)"
     )
     
-    # Description
     description_title = CKEditor5Field('Description Title', config_name='default', null=True, blank=True)
     description = CKEditor5Field('Description', config_name='default', null=True, blank=True)
     
-    # Colors & Stock
-    colors = models.ManyToManyField(NewPhoneColor, blank=True, related_name='phone_models')
     stock_quantity = models.PositiveIntegerField(default=0, help_text="Available stock")
-    
-    # Status
     is_active = models.BooleanField(default=True)
     is_featured = models.BooleanField(default=False, help_text="Show on homepage")
     
@@ -92,12 +41,11 @@ class NewPhoneModel(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name_plural = "New Phone Models"
+        verbose_name_plural = "Accessories Products"
         ordering = ['-created_at']
-        unique_together = ['brand', 'name']
 
     def __str__(self):
-        return f"{self.brand.name} {self.name}"
+        return self.title
     
     @property
     def final_price(self):
@@ -116,23 +64,23 @@ class NewPhoneModel(models.Model):
     
     @property
     def is_in_stock(self):
-        """Check if phone is available"""
+        """Check if product is available"""
         return self.stock_quantity > 0
     
     def save(self, *args, **kwargs):
         if not self.slug:
-            base_slug = slugify(f"{self.brand.name} {self.name}")
+            base_slug = slugify(self.title)
             slug = base_slug
             counter = 1
-            while NewPhoneModel.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+            while AcsProduct.objects.filter(slug=slug).exclude(pk=self.pk).exists():
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
         super().save(*args, **kwargs)
 
 
-class WebsiteDiscount(models.Model):
-    """Fixed website discount applied automatically to all orders"""
+class AcsWebsiteDiscount(models.Model):
+    """Fixed website discount for accessories"""
     percentage = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -152,14 +100,14 @@ class WebsiteDiscount(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Website Discount"
-        verbose_name_plural = "Website Discounts"
+        verbose_name = "Accessories Website Discount"
+        verbose_name_plural = "Accessories Website Discounts"
 
     def __str__(self):
-        return f"Discount: {self.percentage}% + ৳{self.amount}"
+        return f"Accessories Discount: {self.percentage}% + ৳{self.amount}"
 
 
-class NewPhoneOrder(models.Model):
+class AcsOrder(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('confirmed', 'Confirmed'),
@@ -180,25 +128,18 @@ class NewPhoneOrder(models.Model):
     # Order identification
     order_number = models.CharField(max_length=50, unique=True, editable=False)
     
-    # User & Phone
+    # User & Product
     user = models.ForeignKey(
         User, 
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True,
-        related_name='new_phone_orders'
+        related_name='acs_orders'
     )
-    phone_model = models.ForeignKey(
-        NewPhoneModel, 
+    product = models.ForeignKey(
+        AcsProduct, 
         on_delete=models.PROTECT,
         related_name='orders'
-    )
-    selected_color = models.ForeignKey(
-        NewPhoneColor,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        help_text="Color chosen by customer"
     )
     quantity = models.PositiveIntegerField(default=1)
     
@@ -267,7 +208,7 @@ class NewPhoneOrder(models.Model):
     delivered_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = "New Phone Orders"
+        verbose_name_plural = "Accessories Orders"
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['order_number']),
@@ -287,8 +228,8 @@ class NewPhoneOrder(models.Model):
     def generate_order_number():
         """Generate unique order number"""
         while True:
-            order_number = f"NP-{uuid.uuid4().hex[:8].upper()}"
-            if not NewPhoneOrder.objects.filter(order_number=order_number).exists():
+            order_number = f"ACS-{uuid.uuid4().hex[:8].upper()}"
+            if not AcsOrder.objects.filter(order_number=order_number).exists():
                 return order_number
     
     def calculate_total(self):
@@ -320,10 +261,10 @@ class NewPhoneOrder(models.Model):
         return discount
 
 
-class NewPhoneReview(models.Model):
-    """Simple review system for new phones"""
-    phone_model = models.ForeignKey(
-        NewPhoneModel,
+class AcsReview(models.Model):
+    """Review system for accessories"""
+    product = models.ForeignKey(
+        AcsProduct,
         on_delete=models.CASCADE,
         related_name='reviews'
     )
@@ -339,8 +280,8 @@ class NewPhoneReview(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        verbose_name_plural = "Phone Reviews"
+        verbose_name_plural = "Accessories Reviews"
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Review by {self.customer_name} for {self.phone_model.name} - {self.rating}★"
+        return f"Review by {self.customer_name} for {self.product.title} - {self.rating}★"

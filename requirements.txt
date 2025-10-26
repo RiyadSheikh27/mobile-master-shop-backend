@@ -1,4 +1,5 @@
 asgiref==3.10.0
+attrs==25.4.0
 cachetools==6.2.1
 certifi==2025.10.5
 cffi==2.0.0
@@ -7,9 +8,13 @@ cryptography==46.0.3
 dj-rest-auth==7.0.1
 Django==5.2.7
 django-allauth==65.12.1
+django-ckeditor==6.7.3
+django-ckeditor-5==0.2.18
 django-cors-headers==4.9.0
+django-js-asset==3.1.2
 djangorestframework==3.16.1
 djangorestframework_simplejwt==5.5.1
+drf-spectacular==0.28.0
 drf-yasg==1.21.11
 google-auth==2.41.1
 google-auth-httplib2==0.2.0
@@ -17,6 +22,8 @@ google-auth-oauthlib==1.2.2
 httplib2==0.31.0
 idna==3.11
 inflection==0.5.1
+jsonschema==4.25.1
+jsonschema-specifications==2025.9.1
 oauthlib==3.3.1
 packaging==25.0
 pillow==12.0.0
@@ -29,9 +36,13 @@ pyparsing==3.2.5
 python-dotenv==1.1.1
 pytz==2025.2
 PyYAML==6.0.3
+referencing==0.37.0
 requests==2.32.5
 requests-oauthlib==2.0.0
+rpds-py==0.28.0
 rsa==4.9.1
 sqlparse==0.5.3
+stripe==13.0.1
+typing_extensions==4.15.0
 uritemplate==4.2.0
 urllib3==2.5.0
