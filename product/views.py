@@ -6,17 +6,23 @@ from rest_framework.permissions import (
     IsAuthenticated,
     IsAuthenticatedOrReadOnly,
 )
+from accounts.permissions import IsAdmin, IsUser, IsOwnerOrReadOnly
 from django.db import transaction
 from django.db.models import Prefetch, Q
 from decimal import Decimal
 from .models import *
 from .serializers import *
+import stripe
+from django.conf import settings
+from django.utils import timezone
+
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
 class PhoneBrandViewSet(viewsets.ModelViewSet):
     queryset = PhoneBrand.objects.all()
     serializer_class = PhoneBrandSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsOwnerOrReadOnly]
 
     def get_queryset(self):
         return PhoneBrand.objects.filter(is_active=True).prefetch_related(
@@ -44,7 +50,7 @@ class PhoneModelViewSet(viewsets.ModelViewSet):
     - Retrieve single model details
     """
     
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsOwnerOrReadOnly]
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -68,7 +74,7 @@ class DiscountViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = WebsiteDiscountSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsOwnerOrReadOnly]
 
     def get_queryset(self):
         return WebsiteDiscount.objects.filter(is_active=True)
@@ -81,7 +87,7 @@ class PhoneProblemViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = PhoneProblemSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsOwnerOrReadOnly]
     queryset = PhoneProblem.objects.filter(is_active=True)
 
     def create(self, request, *args, **kwargs):
@@ -401,14 +407,16 @@ class RepairPriceViewSet(viewsets.ModelViewSet):
 class OrderViewSet(viewsets.ModelViewSet):
     """
     ViewSet for orders
-    - Create new order
+    - Create new order with Stripe payment
     - List orders (user's own orders if authenticated)
     - Retrieve order details
-    - Update order status (admin only)
+    - Confirm payment
+    - Cancel order with refund
+    - Calculate price
+    - Check payment status
     """
 
-    permission_classes = [AllowAny]  # Change to IsAuthenticatedOrReadOnly in production
-
+    permission_classes = [IsAuthenticated]
     def get_serializer_class(self):
         if self.action == "create":
             return OrderCreateSerializer
@@ -443,10 +451,36 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def list(self, request, *args, **kwargs):
+        """List all orders with filters"""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(
+            {
+                "success": True,
+                "message": "Orders retrieved successfully",
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        """Retrieve single order details"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(
+            {
+                "success": True,
+                "message": "Order details retrieved successfully",
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """
-        Create a new order
+        Create a new order with Stripe payment integration
         Body: {
             "phone_model_id": 1,
             "customer_name": "John Doe",
@@ -456,9 +490,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {"problem_id": 1, "part_type": "original"},
                 {"problem_id": 2, "part_type": "duplicate"}
             ],
-            "notes": "Please handle with care",
-            "website_discount_percentage": 5.00,
-            "website_discount_amount": 0.00
+            "notes": "Please handle with care"
         }
         """
         serializer = OrderCreateSerializer(data=request.data)
@@ -466,6 +498,11 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         data = serializer.validated_data
         phone_model = PhoneModel.objects.get(id=data["phone_model_id"])
+
+        # Get website discount
+        website_discount_obj = WebsiteDiscount.objects.filter(is_active=True).first()
+        website_discount_percentage = website_discount_obj.percentage if website_discount_obj else Decimal("0.00")
+        website_discount_amount = website_discount_obj.amount if website_discount_obj else Decimal("0.00")
 
         # Create order
         order = Order.objects.create(
@@ -476,12 +513,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             phone_model=phone_model,
             subtotal=Decimal("0.00"),
             item_discount=Decimal("0.00"),
-            website_discount_percentage=data.get(
-                "website_discount_percentage", Decimal("0.00")
-            ),
-            website_discount_amount=data.get(
-                "website_discount_amount", Decimal("0.00")
-            ),
+            website_discount_percentage=website_discount_percentage,
+            website_discount_amount=website_discount_amount,
             total_amount=Decimal("0.00"),
             notes=data.get("notes", ""),
             status="pending",
@@ -512,20 +545,306 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.calculate_totals()
         order.save()
 
-        # Return order details
-        output_serializer = OrderSerializer(order)
+        # Create Stripe Payment Intent
+        try:
+            payment_intent = stripe.PaymentIntent.create(
+                amount=int(order.total_amount * 100),  # Convert to cents
+                currency='bdt',  # Bangladesh Taka
+                metadata={
+                    'order_id': order.id,
+                    'order_number': order.order_number,
+                    'customer_email': order.customer_email,
+                    'phone_model': str(phone_model)
+                },
+                description=f"Repair Order {order.order_number} - {phone_model}"
+            )
+            
+            order.payment_intent_id = payment_intent.id
+            order.save()
+            
+            output_serializer = OrderSerializer(order)
+            
+            return Response(
+                {
+                    "success": True,
+                    "message": "Order created successfully",
+                    "data": {
+                        "order": output_serializer.data,
+                        "payment": {
+                            "client_secret": payment_intent.client_secret,
+                            "payment_intent_id": payment_intent.id,
+                            "amount": str(order.total_amount),
+                            "currency": "BDT"
+                        }
+                    }
+                },
+                status=status.HTTP_201_CREATED,
+            )
+            
+        except stripe.error.StripeError as e:
+            # If Stripe fails, delete the order
+            order.delete()
+            return Response(
+                {
+                    "success": False,
+                    "message": f"Payment initialization failed: {str(e)}"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def confirm_payment(self, request, pk=None):
+        """
+        Confirm payment after successful Stripe payment
+        Body: {
+            "payment_intent_id": "pi_xxxxxxxxxxxxx"
+        }
+        """
+        order = self.get_object()
+        
+        payment_intent_id = request.data.get('payment_intent_id')
+        
+        if not payment_intent_id or order.payment_intent_id != payment_intent_id:
+            return Response({
+                'success': False,
+                'message': 'Invalid payment intent'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Verify payment with Stripe
+            payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            
+            if payment_intent.status == 'succeeded':
+                with transaction.atomic():
+                    # Update order
+                    order.payment_status = 'paid'
+                    order.status = 'confirmed'
+                    order.confirmed_at = timezone.now()
+                    order.payment_method = payment_intent.payment_method_types[0] if payment_intent.payment_method_types else 'card'
+                    order.save()
+                    
+                    # Set warranty expiry for all items
+                    for item in order.order_items.all():
+                        item.set_warranty_expiry()
+                        item.save()
+                
+                serializer = OrderSerializer(order)
+                return Response({
+                    'success': True,
+                    'message': 'Payment confirmed successfully',
+                    'data': serializer.data
+                }, status=status.HTTP_200_OK)
+            else:
+                order.payment_status = 'failed'
+                order.save()
+                return Response({
+                    'success': False,
+                    'message': f'Payment not completed. Status: {payment_intent.status}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except stripe.error.StripeError as e:
+            return Response({
+                'success': False,
+                'message': f'Payment verification failed: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def cancel_order(self, request, pk=None):
+        """
+        Cancel an order and process refund if payment was made
+        """
+        order = self.get_object()
+        
+        # Only allow cancellation of pending/confirmed orders
+        if order.status not in ['pending', 'confirmed']:
+            return Response({
+                'success': False,
+                'message': f'Cannot cancel order with status: {order.get_status_display()}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        with transaction.atomic():
+            # Refund if payment was made
+            if order.payment_status == 'paid' and order.payment_intent_id:
+                try:
+                    refund = stripe.Refund.create(
+                        payment_intent=order.payment_intent_id
+                    )
+                    order.payment_status = 'refunded'
+                except stripe.error.StripeError as e:
+                    return Response({
+                        'success': False,
+                        'message': f'Refund failed: {str(e)}'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            order.status = 'cancelled'
+            order.save()
+        
+        serializer = OrderSerializer(order)
+        return Response({
+            'success': True,
+            'message': 'Order cancelled successfully',
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def calculate_order_price(self, request):
+        """
+        Calculate total price for selected repairs before creating order
+        Body: {
+            "phone_model_id": 1,
+            "items": [
+                {"problem_id": 1, "part_type": "original"},
+                {"problem_id": 2, "part_type": "duplicate"}
+            ]
+        }
+        """
+        phone_model_id = request.data.get("phone_model_id")
+        items_data = request.data.get("items", [])
+
+        if not phone_model_id:
+            return Response(
+                {"success": False, "message": "phone_model_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not items_data:
+            return Response(
+                {"success": False, "message": "items list is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            phone_model = PhoneModel.objects.get(id=phone_model_id, is_active=True)
+        except PhoneModel.DoesNotExist:
+            return Response(
+                {"success": False, "message": "Invalid or inactive phone model"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get website discount
+        website_discount_obj = WebsiteDiscount.objects.filter(is_active=True).first()
+        website_discount_percentage = (
+            website_discount_obj.percentage if website_discount_obj else Decimal("0.00")
+        )
+        website_discount_amount = (
+            website_discount_obj.amount if website_discount_obj else Decimal("0.00")
+        )
+
+        # Calculate pricing
+        subtotal = Decimal("0.00")
+        item_discount = Decimal("0.00")
+        items_breakdown = []
+
+        for item_data in items_data:
+            problem_id = item_data.get("problem_id")
+            part_type = item_data.get("part_type", "original")
+
+            try:
+                repair_price = RepairPrice.objects.select_related("problem").get(
+                    phone_model=phone_model,
+                    problem_id=problem_id,
+                    part_type=part_type,
+                    is_active=True,
+                )
+                
+                if not repair_price.in_stock:
+                    return Response({
+                        'success': False,
+                        'message': f'Part not in stock for {repair_price.problem.name} ({part_type})'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                base_price = repair_price.base_price
+                final_price = repair_price.final_price
+                discount = base_price - final_price
+
+                subtotal += base_price
+                item_discount += discount
+
+                items_breakdown.append(
+                    {
+                        "problem_id": problem_id,
+                        "problem_name": repair_price.problem.name,
+                        "part_type": part_type,
+                        "base_price": str(base_price),
+                        "discount": str(discount),
+                        "final_price": str(final_price),
+                        "warranty_days": repair_price.warranty_days,
+                    }
+                )
+
+            except RepairPrice.DoesNotExist:
+                return Response(
+                    {
+                        "success": False,
+                        "message": f"Invalid repair option for problem ID {problem_id} with part type {part_type}",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # Price after item discounts
+        price_after_items = subtotal - item_discount
+
+        # Apply website discount
+        website_discount = (
+            price_after_items * (website_discount_percentage / Decimal("100"))
+        ) + website_discount_amount
+
+        # Final total
+        total_amount = max(price_after_items - website_discount, Decimal("0.00"))
+        total_discount = subtotal - total_amount
+
         return Response(
             {
                 "success": True,
-                "message": "Order created successfully.",
-                "data": output_serializer.data,
+                "message": "Repair price calculated successfully",
+                "data": {
+                    "phone_model": phone_model.name,
+                    "brand": phone_model.brand.name,
+                    "subtotal": str(subtotal),
+                    "item_discount": str(item_discount),
+                    "price_after_item_discount": str(price_after_items),
+                    "website_discount_percentage": str(website_discount_percentage),
+                    "website_discount_amount": str(website_discount_amount),
+                    "website_discount": str(website_discount),
+                    "total_amount": str(total_amount),
+                    "total_discount": str(total_discount),
+                    "items": items_breakdown,
+                },
             },
-            status=status.HTTP_201_CREATED,
+            status=status.HTTP_200_OK,
         )
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAdmin])
+    def payment_status(self, request, pk=None):
+        """
+        Check payment status of an order
+        """
+        order = self.get_object()
+        
+        response_data = {
+            'order_number': order.order_number,
+            'status': order.status,
+            'payment_status': order.payment_status,
+            'total_amount': str(order.total_amount),
+        }
+        
+        # If payment intent exists, fetch latest status from Stripe
+        if order.payment_intent_id:
+            try:
+                payment_intent = stripe.PaymentIntent.retrieve(order.payment_intent_id)
+                response_data['stripe_status'] = payment_intent.status
+                response_data['payment_method'] = order.payment_method
+            except stripe.error.StripeError:
+                pass
+        
+        return Response({
+            'success': True,
+            'message': 'Payment status retrieved',
+            'data': response_data
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
     def confirm(self, request, pk=None):
-        """Confirm an order (admin only in production)"""
+        """Confirm an order (admin only in production) - Legacy endpoint"""
         order = self.get_object()
 
         if order.status != "pending":
@@ -537,8 +856,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        from django.utils import timezone
 
         order.status = "confirmed"
         order.confirmed_at = timezone.now()
@@ -556,7 +873,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
-        """Cancel an order"""
+        """Cancel an order - Legacy endpoint (use cancel_order instead)"""
         order = self.get_object()
 
         if order.status in ["completed", "cancelled", "refunded"]:
@@ -583,73 +900,60 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
         serializer = self.get_serializer(order)
         return Response(
-            {
-                "success": False,
-                "message": "phone_model parameter is required",
-                "data": [],
-            },
-            status=status.HTTP_400_BAD_REQUEST,
+            {"success": True, "data": serializer.data}, status=status.HTTP_200_OK
         )
+    
+class RepairReviewViewSet(viewsets.ModelViewSet):
+    serializer_class = RepairReviewSerializer
+    permission_classes = [AllowAny]
 
-        repair_prices = self.get_queryset().filter(phone_model_id=phone_model_id)
+    def get_queryset(self):
+        queryset = PhoneReview.objects.select_related('phone_model__brand')
+        
+        # Filter by phone model
+        phone_id = self.request.query_params.get('phone_model')
+        if phone_id:
+            queryset = queryset.filter(phone_model_id=phone_id)
+        
+        return queryset.order_by('-created_at')
 
-        # Group by problem
-        problems_dict = {}
-        for repair_price in repair_prices:
-            problem_id = repair_price.problem.id
-            if problem_id not in problems_dict:
-                problems_dict[problem_id] = {
-                    "problem_id": problem_id,
-                    "problem_name": repair_price.problem.name,
-                    "problem_icon": repair_price.problem.icon,
-                    "problem_description": repair_price.problem.description,
-                    "estimated_time": repair_price.problem.estimated_time,
-                    "original": None,
-                    "duplicate": None,
-                }
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'message': 'Reviews retrieved successfully',
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
 
-            # Add price to appropriate part type
-            serializer = RepairPriceSerializer(repair_price)
-            problems_dict[problem_id][repair_price.part_type] = serializer.data
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Review created successfully',
+            'data': serializer.data
+        }, status=status.HTTP_201_CREATED)
 
-        # Convert to list
-        grouped_data = list(problems_dict.values())
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Review updated successfully',
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
 
-        return Response(
-            {
-                "success": True,
-                "message": "Data retrieved successfully.",
-                "data": grouped_data,
-            },
-            status=status.HTTP_200_OK,
-        )
-
-    @action(detail=False, methods=["post"])
-    def calculate_price(self, request):
-        """
-        Calculate total price for selected repairs
-        Body: {
-            "phone_model_id": 1,
-            "items": [
-                {"problem_id": 1, "part_type": "original"},
-                {"problem_id": 2, "part_type": "duplicate"}
-            ],
-            "website_discount_percentage": 5.00,
-            "website_discount_amount": 0.00
-        }
-        """
-        phone_model_id = request.data.get("phone_model_id")
-        items_data = request.data.get("items", [])
-        website_discount_percentage = Decimal(
-            str(request.data.get("website_discount_percentage", "0.00"))
-        )
-        website_discount_amount = Decimal(
-            str(request.data.get("website_discount_amount", "0.00"))
-        )
-
-        if not phone_model_id:
-            return Response(
-                {"success": False, "message": "phone_model_id is required", "data": []},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return Response({
+            'success': True,
+            'message': 'Review deleted successfully'
+        }, status=status.HTTP_200_OK)

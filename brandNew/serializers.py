@@ -27,7 +27,7 @@ class PhoneBrandSerializer(serializers.ModelSerializer):
 class PhoneModelListSerializer(serializers.ModelSerializer):
     brand_name = serializers.CharField(source='brand.name', read_only=True)
     brand_slug = serializers.CharField(source='brand.slug', read_only=True)
-    color = PhoneColorSerializer(many=True, write_only=True)
+    color = PhoneColorSerializer(many=True, read_only=True)
     final_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     is_in_stock = serializers.BooleanField(read_only=True)
@@ -40,7 +40,7 @@ class PhoneModelListSerializer(serializers.ModelSerializer):
             'ram', 'memory',
             'main_amount', 'discounted_amount', 'final_price', 'discount_percentage',
             'color', 'stock_quantity', 'is_in_stock', 'is_featured',
-            'created_at'
+            'created_at', 'colors',
         ]
         ref_name = 'BrandNewPhoneModelList'
 
@@ -91,7 +91,6 @@ class PhoneModelCreateUpdateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
-    
     class Meta:
         model = NewPhoneModel
         fields = [

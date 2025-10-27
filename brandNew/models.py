@@ -20,6 +20,7 @@ class NewPhoneBrand(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        
         verbose_name_plural = "New Phone Brands"
         ordering = ['name']
 

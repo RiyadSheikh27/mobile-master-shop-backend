@@ -51,14 +51,14 @@ class AcsProduct(models.Model):
     def final_price(self):
         """Return the selling price (discounted if available, else main price)"""
         if self.discounted_amount and self.discounted_amount < self.main_amount:
-            return self.discounted_amount
+            return self.main_amount - self.discounted_amount
         return self.main_amount
     
     @property
     def discount_percentage(self):
         """Calculate discount percentage"""
         if self.discounted_amount and self.discounted_amount < self.main_amount:
-            discount = ((self.main_amount - self.discounted_amount) / self.main_amount) * 100
+            discount = (100 - ((self.main_amount - self.discounted_amount) / self.main_amount) * 100)
             return round(discount, 2)
         return Decimal('0.00')
     

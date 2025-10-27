@@ -226,3 +226,17 @@ class WebsiteDiscountSerializer(serializers.ModelSerializer):
         fields = ['id', 'percentage', 'amount', 'is_active', 'created_at']
         read_only_fields = ['is_active', 'created_at']
         ref_name = 'ProductWebsiteDiscountSerializer'
+
+class RepairReviewSerializer(serializers.ModelSerializer):
+    phone_name = serializers.CharField(source='phone_model.name', read_only=True)
+    phone_brand = serializers.CharField(source='phone_model.brand.name', read_only=True)
+    
+    class Meta:
+        model = PhoneReview
+        fields = [
+            'id', 'phone_model', 'phone_name', 'phone_brand',
+            'customer_name', 'customer_email',
+            'rating', 'review',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']

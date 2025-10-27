@@ -142,7 +142,7 @@ class NewPhoneModelViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response({
             'success': True,
-            'message': 'Phone models retrieved successfully',
+            'message': 'Phone models Listed successfully',
             'data': serializer.data
         }, status=status.HTTP_200_OK)
 

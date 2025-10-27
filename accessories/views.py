@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from accounts.permissions import IsAdmin, IsUser, IsOwnerOrReadOnly
 from django.db import transaction
 from django.db.models import Q
 from decimal import Decimal
@@ -18,7 +19,7 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 
 # ==================== PRODUCT VIEWSET ====================
 class AcsProductViewSet(viewsets.ModelViewSet):
-    permission_classes = [AllowAny]
+    permission_classes = [IsOwnerOrReadOnly]
     lookup_field = 'pk'
 
     def get_serializer_class(self):
@@ -154,9 +155,9 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
     
     def get_permissions(self):
         if self.action == 'create':
-            return [AllowAny()]
+            return [IsAuthenticated()]
         elif self.action in ['update', 'partial_update', 'destroy']:
-            return [IsAdmin()]
+            return [IsOwnerOrReadOnly()]
         return [IsAuthenticated()]
 
     def get_serializer_class(self):
@@ -235,7 +236,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
             website_discount_amount = active_discount.amount
         
         # Calculate shipping
-        shipping_cost = Decimal('100.00')  # Flat rate
+        shipping_cost = Decimal('00.00')
         
         # Calculate prices
         unit_price = product.final_price
