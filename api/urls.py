@@ -13,7 +13,7 @@ router.register(r'repair/orders', OrderViewSet, basename='order')
 router.register(r'repair/discounts', DiscountViewSet, basename='websitediscount')
 router.register(r'repair/review', RepairReviewViewSet, basename='repair-review')
 
-router.register(r'brandnew/brands', PhoneBrandViewSet, basename='newphonebrand')
+router.register(r'brandnew/brands', NewPhoneBrandViewSet, basename='newphonebrand')
 router.register(r'brandnew/models', NewPhoneModelViewSet, basename='newphonemodel')
 router.register(r'brandnew/discount', WebsiteDiscountViewSet, basename = 'newphonediscount')
 router.register(r'brandnew/review', PhoneReviewViewSet, basename = 'newphonereview')

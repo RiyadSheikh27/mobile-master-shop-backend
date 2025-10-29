@@ -17,7 +17,7 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
 # ==================== BRAND VIEWSET ====================
-class PhoneBrandViewSet(viewsets.ModelViewSet):
+class NewPhoneBrandViewSet(viewsets.ModelViewSet):
     serializer_class = PhoneBrandSerializer
     permission_classes = [AllowAny]
     lookup_field = 'slug'

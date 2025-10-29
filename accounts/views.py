@@ -53,6 +53,8 @@ class SendOTPView(APIView):
         user.username_set = False
         user.save()
 
+
+
         send_mail(
             subject='Your verification code',
             message=f'Your verification code is {code}',
@@ -165,7 +167,7 @@ class LoginView(APIView):
             },
             status=200
         )
-        
+    
 
 
 """OAuth Register View - Using Access Token"""

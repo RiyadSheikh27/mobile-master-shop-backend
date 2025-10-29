@@ -19,10 +19,10 @@ from django.utils import timezone
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
-class PhoneBrandViewSet(viewsets.ModelViewSet):
+class PhoneBrandViewSet(viewsets.ModelViewSet): 
     queryset = PhoneBrand.objects.all()
     serializer_class = PhoneBrandSerializer
-    permission_classes = [IsOwnerOrReadOnly]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         return PhoneBrand.objects.filter(is_active=True).prefetch_related(
@@ -36,7 +36,7 @@ class PhoneBrandViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "status": "success",
-                "message": "Phone brands retrieved successfully",
+                "message": "Phone brands Listed successfully",
                 "data": serializer.data,
             },
             status=status.HTTP_200_OK,
@@ -160,12 +160,12 @@ class RepairPriceViewSet(viewsets.ModelViewSet):
         if not queryset.exists():
             return Response(
                 {
-                    "success": False,
-                    "status": "error",
+                    "success": True,
+                    "status": "empty data",
                     "message": "No repair prices found for the given phone model or brand",
                     "data": [],
                 },
-                status=status.HTTP_404_NOT_FOUND,
+                status=status.HTTP_200_OK,
             )
 
         # Group by problem

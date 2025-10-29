@@ -12,7 +12,7 @@ class PhoneBrand(models.Model):
     """Phone brand model (e.g., Apple, Samsung)"""
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True, blank=True)
-    logo = models.ImageField(upload_to='brand_logos/', null=True, blank=True)
+    logo = models.ImageField(upload_to='phone_brands/', null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -88,7 +88,6 @@ class RepairPrice(models.Model):
     )
     part_type = models.CharField(max_length=20, choices=PART_TYPE_CHOICES)
     
-    # Pricing
     base_price = models.DecimalField(
         max_digits=10, 
         decimal_places=2, 
@@ -109,7 +108,6 @@ class RepairPrice(models.Model):
         help_text="Fixed discount amount"
     )
     
-    # Stock management
     in_stock = models.BooleanField(default=True)
     warranty_days = models.PositiveIntegerField(
         default=90, 
@@ -166,19 +164,15 @@ class Order(models.Model):
         ('refunded', 'Refunded'),
     ]
 
-    # Order identification
     order_number = models.CharField(max_length=50, unique=True, editable=False)
     
-    # Customer information
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
     customer_name = models.CharField(max_length=200)
     customer_email = models.EmailField()
     customer_phone = models.CharField(max_length=20)
     
-    # Phone information
     phone_model = models.ForeignKey(PhoneModel, on_delete=models.PROTECT, related_name='orders')
     
-    # Pricing
     subtotal = models.DecimalField(
         max_digits=10, 
         decimal_places=2,
@@ -211,20 +205,16 @@ class Order(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(Decimal('0.00'))]
     )
-    
-    # Status
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='pending')
     
-    # Payment information (for Stripe integration)
     payment_intent_id = models.CharField(max_length=255, blank=True, null=True)
     payment_method = models.CharField(max_length=50, blank=True)
     
-    # Additional information
     notes = models.TextField(blank=True, help_text="Customer notes or special instructions")
     admin_notes = models.TextField(blank=True, help_text="Internal notes for staff")
     
-    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     confirmed_at = models.DateTimeField(null=True, blank=True)
@@ -258,23 +248,18 @@ class Order(models.Model):
 
     def calculate_totals(self):
         """Calculate all totals for the order"""
-        # Calculate subtotal and item discounts from order items
         items = self.order_items.all()
         self.subtotal = sum(item.base_price for item in items)
         self.item_discount = sum(item.item_discount for item in items)
         
-        # Calculate price after item discounts
         price_after_items = self.subtotal - self.item_discount
         
-        # Apply website percentage discount
         website_discount = Decimal('0.00')
         if self.website_discount_percentage > 0:
             website_discount = price_after_items * (self.website_discount_percentage / Decimal('100'))
         
-        # Apply website fixed discount
         website_discount += self.website_discount_amount
         
-        # Calculate final total
         self.total_amount = max(price_after_items - website_discount, Decimal('0.00'))
         
         return self.total_amount
