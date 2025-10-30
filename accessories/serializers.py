@@ -14,7 +14,7 @@ class AcsProductListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'subtitle', 'slug', 'picture',
             'main_amount', 'discounted_amount', 'final_price', 'discount_percentage',
-            'stock_quantity', 'is_in_stock', 'is_featured',
+            'stock_quantity', 'description_title', 'description', 'is_in_stock', 'is_featured',
             'created_at'
         ]
 

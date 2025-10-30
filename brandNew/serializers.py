@@ -32,12 +32,13 @@ class PhoneModelListSerializer(serializers.ModelSerializer):
     discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     is_in_stock = serializers.BooleanField(read_only=True)
     
+    
     class Meta:
         model = NewPhoneModel
         fields = [
             'id', 'name', 'slug', 'icon',
             'brand', 'brand_name', 'brand_slug',
-            'ram', 'memory',
+            'ram', 'memory', 'description_title', 'description',
             'main_amount', 'discounted_amount', 'final_price', 'discount_percentage',
             'color', 'stock_quantity', 'is_in_stock', 'is_featured',
             'created_at', 'colors',
