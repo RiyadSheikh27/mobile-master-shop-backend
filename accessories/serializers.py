@@ -249,5 +249,5 @@ class AdminAcsOrderListSerializer(serializers.ModelSerializer):
             # Timestamps
             'created_at', 'updated_at',
         ]
-        read_only_fields = fields  # All fields are read-only for list view
+        read_only_fields = fields
 # ========== END NEW SERIALIZER ==========
