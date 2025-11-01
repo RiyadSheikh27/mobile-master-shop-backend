@@ -189,3 +189,65 @@ class AcsPriceCalculationSerializer(serializers.Serializer):
         if not AcsProduct.objects.filter(id=value, is_active=True).exists():
             raise serializers.ValidationError("Invalid product")
         return value
+    
+# ========== NEW SERIALIZER FOR ADMIN ACCESSORY ORDER LIST ==========
+class AdminAcsOrderListSerializer(serializers.ModelSerializer):
+    """
+    Comprehensive serializer for admin accessory order list view
+    Shows all order details including customer info, product details, and payment info
+    """
+    # Product details
+    product_title = serializers.CharField(source='product.title', read_only=True)
+    product_subtitle = serializers.CharField(source='product.subtitle', read_only=True)
+    product_image = serializers.ImageField(source='product.picture', read_only=True)
+    product_slug = serializers.CharField(source='product.slug', read_only=True)
+    
+    # User details (if order is linked to a user account)
+    user_email = serializers.EmailField(source='user.email', read_only=True, allow_null=True)
+    user_username = serializers.CharField(source='user.username', read_only=True, allow_null=True)
+    
+    # Status displays
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    payment_status_display = serializers.CharField(source='get_payment_status_display', read_only=True)
+    
+    # Calculated fields
+    total_discount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    
+    class Meta:
+        model = AcsOrder
+        fields = [
+            # Order identification
+            'id', 'order_number',
+            
+            # User account info (if exists)
+            'user', 'user_email', 'user_username',
+            
+            # Customer details
+            'customer_name', 'customer_email', 'customer_phone',
+            
+            # Shipping address
+            'shipping_address', 'city', 'postal_code', 'country',
+            
+            # Product details
+            'product', 'product_title', 'product_subtitle', 'product_image', 'product_slug',
+            
+            # Quantity
+            'quantity',
+            
+            # Pricing details
+            'unit_price', 'subtotal',
+            'website_discount_percentage', 'website_discount_amount', 'total_discount',
+            'shipping_cost', 'total_amount',
+            
+            # Order status
+            'status', 'status_display',
+            'payment_status', 'payment_status_display',
+            
+            # Notes
+            'notes', 'admin_notes',
+            
+            # Timestamps
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = fields  # All fields are read-only for list view
+# ========== END NEW SERIALIZER ==========

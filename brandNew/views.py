@@ -293,7 +293,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             website_discount_amount = active_discount.amount
         
         # Calculate shipping (you can modify this logic)
-        shipping_cost = Decimal('100.00')  # Flat rate
+        shipping_cost = Decimal('00.00')  # Flat rate
         
         # Calculate prices before creating order
         unit_price = phone_model.final_price
@@ -496,7 +496,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
         discount += website_discount_amount
         
         # Shipping
-        shipping_cost = Decimal('100.00')
+        shipping_cost = Decimal('00.00')
         
         # Total
         total_amount = subtotal - discount + shipping_cost
@@ -575,3 +575,107 @@ class PhoneReviewViewSet(viewsets.ModelViewSet):
             'success': True,
             'message': 'Review deleted successfully'
         }, status=status.HTTP_200_OK)
+        
+
+# ========== NEW VIEWSET FOR ADMIN ORDER LIST ==========
+from rest_framework.views import APIView
+from django.db.models import Count, Sum, Q
+
+class AdminOrderListView(APIView):
+    """
+    API endpoint for admins to view all orders with comprehensive details
+    Requires authentication and admin role
+    GET: Returns list of all orders with filtering and statistics
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Check if user is admin
+        if request.user.role != 'admin':
+            return Response({
+                'success': False,
+                'message': 'Permission denied. Only admins can access all orders.'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        # Get all orders with related data
+        queryset = NewPhoneOrder.objects.select_related(
+            'user', 'phone_model__brand', 'selected_color'
+        ).prefetch_related('phone_model__colors')
+
+        # ========== FILTERING OPTIONS ==========
+        # Filter by status
+        status_param = request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+
+        # Filter by payment status
+        payment_status_param = request.query_params.get('payment_status')
+        if payment_status_param:
+            queryset = queryset.filter(payment_status=payment_status_param)
+
+        # Filter by customer email
+        customer_email = request.query_params.get('customer_email')
+        if customer_email:
+            queryset = queryset.filter(customer_email__icontains=customer_email)
+
+        # Filter by order number
+        order_number = request.query_params.get('order_number')
+        if order_number:
+            queryset = queryset.filter(order_number__icontains=order_number)
+
+        # Filter by date range
+        date_from = request.query_params.get('date_from')
+        if date_from:
+            queryset = queryset.filter(created_at__gte=date_from)
+
+        date_to = request.query_params.get('date_to')
+        if date_to:
+            queryset = queryset.filter(created_at__lte=date_to)
+
+        # Filter by phone brand
+        brand = request.query_params.get('brand')
+        if brand:
+            queryset = queryset.filter(phone_model__brand__slug=brand)
+        # ========== END FILTERING OPTIONS ==========
+
+        # Order by newest first
+        queryset = queryset.order_by('-created_at')
+
+        # ========== CALCULATE STATISTICS ==========
+        total_orders = queryset.count()
+        
+        # Count by status
+        status_counts = queryset.values('status').annotate(count=Count('id'))
+        status_summary = {item['status']: item['count'] for item in status_counts}
+        
+        # Count by payment status
+        payment_counts = queryset.values('payment_status').annotate(count=Count('id'))
+        payment_summary = {item['payment_status']: item['count'] for item in payment_counts}
+        
+        # Calculate total revenue (only paid orders)
+        # total_revenue = queryset.filter(
+        #     payment_status='paid'
+        # ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        
+        # Calculate pending revenue
+        # pending_revenue = queryset.filter(
+        #     payment_status='pending'
+        # ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        # ========== END STATISTICS ==========
+
+        # Serialize order data
+        serializer = AdminOrderListSerializer(queryset, many=True)
+
+        return Response({
+            'success': True,
+            'message': 'Admin order list retrieved successfully',
+            'statistics': {
+                'total_orders': total_orders,
+                # 'status_summary': status_summary,
+                # 'payment_summary': payment_summary,
+                # 'total_revenue': str(total_revenue),
+                # 'pending_revenue': str(pending_revenue)
+            },
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+# ========== END NEW VIEWSET ==========

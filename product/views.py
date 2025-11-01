@@ -957,3 +957,148 @@ class RepairReviewViewSet(viewsets.ModelViewSet):
             'success': True,
             'message': 'Review deleted successfully'
         }, status=status.HTTP_200_OK)
+    
+# ========== NEW VIEW FOR ADMIN REPAIR ORDER LIST ==========
+from rest_framework.views import APIView
+from django.db.models import Count, Sum, Avg, Q
+
+class AdminRepairOrderListView(APIView):
+    """
+    API endpoint for admins to view all repair orders with comprehensive details
+    Requires authentication and admin role
+    GET: Returns list of all repair orders with filtering and statistics
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Check if user is admin
+        if request.user.role != 'admin':
+            return Response({
+                'success': False,
+                'message': 'Permission denied. Only admins can access all repair orders.'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        # Get all orders with related data
+        queryset = Order.objects.select_related(
+            'user', 'phone_model__brand'
+        ).prefetch_related(
+            Prefetch(
+                'order_items',
+                queryset=OrderItem.objects.select_related('problem')
+            )
+        )
+
+        # ========== FILTERING OPTIONS ==========
+        # Filter by status
+        status_param = request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+
+        # Filter by payment status
+        payment_status_param = request.query_params.get('payment_status')
+        if payment_status_param:
+            queryset = queryset.filter(payment_status=payment_status_param)
+
+        # Filter by customer email
+        customer_email = request.query_params.get('customer_email')
+        if customer_email:
+            queryset = queryset.filter(customer_email__icontains=customer_email)
+
+        # Filter by customer phone
+        customer_phone = request.query_params.get('customer_phone')
+        if customer_phone:
+            queryset = queryset.filter(customer_phone__icontains=customer_phone)
+
+        # Filter by order number
+        order_number = request.query_params.get('order_number')
+        if order_number:
+            queryset = queryset.filter(order_number__icontains=order_number)
+
+        # Filter by date range
+        date_from = request.query_params.get('date_from')
+        if date_from:
+            queryset = queryset.filter(created_at__gte=date_from)
+
+        date_to = request.query_params.get('date_to')
+        if date_to:
+            queryset = queryset.filter(created_at__lte=date_to)
+
+        # Filter by phone brand
+        brand = request.query_params.get('brand')
+        if brand:
+            queryset = queryset.filter(phone_model__brand__slug=brand)
+
+        # Filter by phone model
+        phone_model = request.query_params.get('phone_model')
+        if phone_model:
+            queryset = queryset.filter(phone_model_id=phone_model)
+
+        # Filter by payment method
+        payment_method = request.query_params.get('payment_method')
+        if payment_method:
+            queryset = queryset.filter(payment_method=payment_method)
+        # ========== END FILTERING OPTIONS ==========
+
+        # Order by newest first
+        queryset = queryset.order_by('-created_at')
+
+        # ========== CALCULATE STATISTICS ==========
+        total_orders = queryset.count()
+        
+        # Count by status
+        status_counts = queryset.values('status').annotate(count=Count('id'))
+        status_summary = {item['status']: item['count'] for item in status_counts}
+        
+        # Count by payment status
+        payment_counts = queryset.values('payment_status').annotate(count=Count('id'))
+        payment_summary = {item['payment_status']: item['count'] for item in payment_counts}
+        
+        # # Calculate total revenue (only paid orders)
+        # total_revenue = queryset.filter(
+        #     payment_status='paid'
+        # ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        
+        # Calculate pending revenue
+        # pending_revenue = queryset.filter(
+        #     payment_status='pending'
+        # ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        
+        # Calculate average order value
+        # average_order_value = queryset.filter(
+        #     payment_status='paid'
+        # ).aggregate(avg=Avg('total_amount'))['avg'] or Decimal('0.00')
+        
+        # Count total repair items across all orders
+        total_repair_items = OrderItem.objects.filter(
+            order__in=queryset
+        ).count()
+        
+        # # Most common repair problems
+        # top_problems = OrderItem.objects.filter(
+        #     order__in=queryset
+        # ).values(
+        #     'problem__name'
+        # ).annotate(
+        #     count=Count('id')
+        # ).order_by('-count')[:5]
+        # ========== END STATISTICS ==========
+
+        # Serialize order data
+        serializer = AdminRepairOrderListSerializer(queryset, many=True)
+
+        return Response({
+            'success': True,
+            'message': 'Admin repair order list retrieved successfully',
+            'statistics': {
+                'total_orders': total_orders,
+                # 'status_summary': status_summary,
+                # 'payment_summary': payment_summary,
+                # 'total_revenue': str(total_revenue),
+                # 'pending_revenue': str(pending_revenue),
+                # 'average_order_value': str(round(average_order_value, 2)) if average_order_value else '0.00',
+                'total_repair_items': total_repair_items,
+                # 'top_repair_problems': list(top_problems)
+            },
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+# ========== END NEW VIEW ==========

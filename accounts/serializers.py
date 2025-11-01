@@ -56,3 +56,18 @@ class OAuthRegisterSerializer(serializers.Serializer):
 class OAuthLoginSerializer(serializers.Serializer):
     access_token = serializers.CharField()
     provider = serializers.ChoiceField(choices=['google', 'apple'])
+
+class UserListSerializer(serializers.ModelSerializer):
+    """Serializer for displaying user list to admin"""
+    class Meta:
+        model = User
+        fields = [
+            'id', 
+            'username', 
+            'email', 
+            'role', 
+            'is_oauth_user', 
+            'email_verified', 
+            'date_joined',
+        ]
+        read_only_fields = fields

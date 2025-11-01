@@ -399,3 +399,35 @@ class OAuthLoginView(APIView):
                 {"error": f"An error occurred during login: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        
+
+class UserListView(APIView):
+    """
+    API endpoint for admins to view all registered users.
+    Requires authentication and admin role.
+    GET: Returns list of all users with their details
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != 'admin':
+            logger.warning(f"Non-admin user {request.user.email} attempted to access user list")
+            return Response(
+                {"error": "Permission denied. Only admins can access user list."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        users = User.objects.all().order_by('-date_joined')
+        
+        serializer = UserListSerializer(users, many=True)
+        
+        logger.info(f"Admin {request.user.email} accessed user list. Total users: {users.count()}")
+        
+        return Response(
+            {
+                "message": "User list retrieved successfully",
+                "total_users": users.count(),
+                "users": serializer.data
+            }, 
+            status=status.HTTP_200_OK
+        )

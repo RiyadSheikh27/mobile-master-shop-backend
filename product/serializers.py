@@ -240,3 +240,72 @@ class RepairReviewSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+# ========== NEW SERIALIZER FOR ADMIN REPAIR ORDER LIST ==========
+class AdminRepairOrderListSerializer(serializers.ModelSerializer):
+    """
+    Comprehensive serializer for admin repair order list view
+    Shows all order details including customer info, phone details, repair items, and payment info
+    """
+    # Phone details
+    phone_model_name = serializers.CharField(source='phone_model.__str__', read_only=True)
+    phone_model_image = serializers.ImageField(source='phone_model.image', read_only=True)
+    brand_name = serializers.CharField(source='phone_model.brand.name', read_only=True)
+    brand_logo = serializers.ImageField(source='phone_model.brand.logo', read_only=True)
+    
+    # User details (if order is linked to a user account)
+    user_email = serializers.EmailField(source='user.email', read_only=True, allow_null=True)
+    user_username = serializers.CharField(source='user.username', read_only=True, allow_null=True)
+    
+    # Status displays
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    payment_status_display = serializers.CharField(source='get_payment_status_display', read_only=True)
+    
+    # Order items details
+    order_items = OrderItemSerializer(many=True, read_only=True)
+    items_count = serializers.SerializerMethodField()
+    
+    # Calculated fields
+    total_discount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    
+    class Meta:
+        model = Order
+        fields = [
+            # Order identification
+            'id', 'order_number',
+            
+            # User account info (if exists)
+            'user', 'user_email', 'user_username',
+            
+            # Customer details
+            'customer_name', 'customer_email', 'customer_phone',
+            
+            # Phone details
+            'phone_model', 'phone_model_name', 'phone_model_image',
+            'brand_name', 'brand_logo',
+            
+            # Pricing details
+            'subtotal', 'item_discount',
+            'website_discount_percentage', 'website_discount_amount',
+            'total_amount', 'total_discount',
+            
+            # Order status
+            'status', 'status_display',
+            'payment_status', 'payment_status_display',
+            
+
+            # Order items
+            'order_items', 'items_count',
+            
+            # Notes
+            'notes', 'admin_notes',
+            
+            # Timestamps
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = fields 
+    
+    def get_items_count(self, obj):
+        """Get count of repair items in the order"""
+        return obj.order_items.count()
+# ========== END NEW SERIALIZER ==========

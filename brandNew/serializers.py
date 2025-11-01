@@ -248,6 +248,61 @@ class NewPhoneOrderUpdateSerializer(serializers.ModelSerializer):
         fields = ['status', 'admin_notes']
 
 
+# ========== NEW SERIALIZER FOR ADMIN ORDER LIST ==========
+class AdminOrderListSerializer(serializers.ModelSerializer):
+    """
+    Comprehensive serializer for admin order list view
+    Shows all order details including customer info, phone details, and payment info
+    """
+    phone_model_name = serializers.CharField(source='phone_model.name', read_only=True)
+    phone_model_brand = serializers.CharField(source='phone_model.brand.name', read_only=True)
+    phone_image = serializers.ImageField(source='phone_model.icon', read_only=True)
+    phone_ram = serializers.CharField(source='phone_model.ram', read_only=True)
+    phone_memory = serializers.CharField(source='phone_model.memory', read_only=True)
+    
+    color_name = serializers.CharField(source='selected_color.name', read_only=True)
+    color_hex = serializers.CharField(source='selected_color.hex_code', read_only=True)
+    
+    user_email = serializers.EmailField(source='user.email', read_only=True, allow_null=True)
+    user_username = serializers.CharField(source='user.username', read_only=True, allow_null=True)
+    
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    payment_status_display = serializers.CharField(source='get_payment_status_display', read_only=True)
+    
+    total_discount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    
+    class Meta:
+        model = NewPhoneOrder
+        fields = [
+            'id', 'order_number',
+            
+            'user', 'user_email', 'user_username',
+            
+            'customer_name', 'customer_email', 'customer_phone',
+            
+            'shipping_address', 'city', 'postal_code', 'country',
+            
+            'phone_model', 'phone_model_name', 'phone_model_brand', 'phone_image',
+            'phone_ram', 'phone_memory',
+            
+            'selected_color', 'color_name', 'color_hex',
+            
+            'quantity',
+            
+            'unit_price', 'subtotal',
+            'website_discount_percentage', 'website_discount_amount', 'total_discount',
+            'shipping_cost', 'total_amount',
+            
+            'status', 'status_display',
+            'payment_status', 'payment_status_display',
+            
+            'notes', 'admin_notes',
+            
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
 # ==================== REVIEW SERIALIZERS ====================
 class PhoneReviewSerializer(serializers.ModelSerializer):
     phone_name = serializers.CharField(source='phone_model.name', read_only=True)

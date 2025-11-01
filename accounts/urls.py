@@ -12,4 +12,5 @@ urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
     path('oauth/register/', OAuthRegisterView.as_view(), name='oauth-register'),
     path('oauth/login/', OAuthLoginView.as_view(), name='oauth-login'),
+    path('user-list/', UserListView.as_view(), name='user-list'),
 ]

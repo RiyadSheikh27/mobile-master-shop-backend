@@ -27,4 +27,7 @@ router.register(r'accessories/reviews', AcsReviewViewSet, basename='acsreview')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('brandnew/admin/orders/', AdminOrderListView.as_view(), name='admin-order-list'),
+    path('repair/admin/orders/', AdminRepairOrderListView.as_view(), name='admin-repair-order-list'),
+    path('accessories/admin/orders/', AdminAcsOrderListView.as_view(), name='admin-acs-order-list'),
 ]
