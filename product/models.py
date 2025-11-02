@@ -363,26 +363,17 @@ class WebsiteDiscount(models.Model):
         return f"Website Discount: {self.percentage}% + {self.amount} fixed"
     
 class PhoneReview(models.Model):
-    """Simple review system for new phones"""
-    phone_model = models.ForeignKey(
-        PhoneModel,
-        on_delete=models.CASCADE,
-        related_name='reviews'
-    )
-    customer_name = models.CharField(max_length=100)
+    """Review model - tied to order"""
+    order = models.OneToOneField('Order', on_delete=models.CASCADE, related_name='review', null=True, blank=True)
+    phone_model = models.ForeignKey(PhoneModel, on_delete=models.CASCADE, related_name='reviews')
+    customer_name = models.CharField(max_length=200)
     customer_email = models.EmailField()
-    rating = models.PositiveIntegerField(
-        validators=[MinValueValidator(1), MaxValueValidator(5)],
-        help_text="Rating from 1 to 5"
-    )
-    review = models.TextField()
-    
+    rating = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
+    review = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
-        verbose_name_plural = "Phone Reviews"
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Review by {self.customer_name} for {self.phone_model.name} - {self.rating}★"
+        return f"{self.customer_name} - {self.phone_model.name} - {self.rating}★"

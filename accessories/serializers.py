@@ -166,18 +166,46 @@ class AcsOrderUpdateSerializer(serializers.ModelSerializer):
 
 
 # ==================== REVIEW SERIALIZERS ====================
+class AcsReviewCreateSerializer(serializers.Serializer):
+    """Serializer for creating accessory review - must have purchased"""
+    order_id = serializers.IntegerField()
+    rating = serializers.IntegerField(min_value=1, max_value=5)
+    review = serializers.CharField(max_length=1000, required=False, allow_blank=True)
+    
+    def validate_order_id(self, value):
+        """Check if order exists and is paid"""
+        try:
+            order = AcsOrder.objects.get(id=value, payment_status='paid')
+        except AcsOrder.DoesNotExist:
+            raise serializers.ValidationError("Order not found or payment not completed")
+        return value
+    
+    def validate(self, data):
+        """Check if user already reviewed this order"""
+        order = AcsOrder.objects.get(id=data['order_id'])
+        
+        # Check if review already exists for this order
+        if AcsReview.objects.filter(order=order).exists():
+            raise serializers.ValidationError("You have already reviewed this order")
+        
+        return data
+
+
 class AcsReviewSerializer(serializers.ModelSerializer):
+    """Serializer for displaying accessory reviews"""
     product_title = serializers.CharField(source='product.title', read_only=True)
+    order_number = serializers.CharField(source='order.order_number', read_only=True)
     
     class Meta:
         model = AcsReview
         fields = [
-            'id', 'product', 'product_title',
+            'id', 'order', 'order_number',
+            'product', 'product_title',
             'customer_name', 'customer_email',
             'rating', 'review',
-            'created_at', 'updated_at'
+            'created_at'
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['created_at']
 
 
 # ==================== PRICE CALCULATION SERIALIZER ====================

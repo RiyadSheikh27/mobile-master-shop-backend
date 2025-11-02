@@ -14,6 +14,12 @@ from .models import *
 from .serializers import *
 from .utils import *
 import logging
+from product.views import *
+from brandNew.views import *
+from accessories.views import *
+from .permissions import IsAdmin, IsOwnerOrReadOnly, IsUser
+from django.db.models import Count, Sum, Q
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -431,3 +437,12 @@ class UserListView(APIView):
             }, 
             status=status.HTTP_200_OK
         )
+    
+
+#================ Admin Dashboard ================
+# class DashBoardView(APIView):
+#     permission_classes = [IsAdmin]
+
+#     def get(self, request):
+#         if request.user.role != 'admin':
+#             return Response()

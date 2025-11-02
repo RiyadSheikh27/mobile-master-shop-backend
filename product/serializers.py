@@ -227,19 +227,47 @@ class WebsiteDiscountSerializer(serializers.ModelSerializer):
         read_only_fields = ['is_active', 'created_at']
         ref_name = 'ProductWebsiteDiscountSerializer'
 
+#=============== Product Review Serializer =================
+class RepairReviewCreateSerializer(serializers.Serializer):
+    """Serializer for creating repair review - must have purchased"""
+    order_id = serializers.IntegerField()
+    rating = serializers.IntegerField(min_value=1, max_value=5)
+    review = serializers.CharField(max_length=1000, required=False, allow_blank=True)
+
+    def validate_order_id(self, value):
+        """Check if order exists and is paid"""
+        try:
+            order = Order.objects.get(id=value, payment_status='paid')
+        except Order.DoesNotExist:
+            raise serializers.ValidationError("Order not found or payment not completed")
+        return value
+    
+    def validate(self, data):
+        """Check if user already reviewed this order"""
+        order = Order.objects.get(id=data['order_id'])
+        
+        if PhoneReview.objects.filter(order=order).exists():
+            raise serializers.ValidationError("You have already reviewed this order")
+        
+        return data
+    
 class RepairReviewSerializer(serializers.ModelSerializer):
+    """Serializer for displaying repair reviews"""
     phone_name = serializers.CharField(source='phone_model.name', read_only=True)
     phone_brand = serializers.CharField(source='phone_model.brand.name', read_only=True)
+    order_number = serializers.CharField(source='order.order_number', read_only=True)
     
     class Meta:
         model = PhoneReview
         fields = [
-            'id', 'phone_model', 'phone_name', 'phone_brand',
+            'id', 'order', 'order_number',
+            'phone_model', 'phone_name', 'phone_brand',
             'customer_name', 'customer_email',
             'rating', 'review',
-            'created_at', 'updated_at'
+            'created_at'
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['created_at']
+
 
 # ========== NEW SERIALIZER FOR ADMIN REPAIR ORDER LIST ==========
 class AdminRepairOrderListSerializer(serializers.ModelSerializer):

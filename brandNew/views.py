@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from django.db import transaction
 from django.db.models import Q
 from decimal import Decimal
@@ -327,7 +327,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             website_discount_percentage=website_discount_percentage,
             website_discount_amount=website_discount_amount,
             shipping_cost=shipping_cost,
-            total_amount=total_amount,  # Set total_amount here
+            total_amount=total_amount,
             notes=data.get('notes', ''),
             status='pending',
             payment_status='pending'
@@ -336,8 +336,8 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
         # Create Stripe Payment Intent
         try:
             payment_intent = stripe.PaymentIntent.create(
-                amount=int(order.total_amount * 100),  # Convert to cents
-                currency='bdt',  # Bangladesh Taka
+                amount=int(order.total_amount * 100),
+                currency='usd',
                 metadata={
                     'order_id': order.id,
                     'order_number': order.order_number,
@@ -360,7 +360,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                         'client_secret': payment_intent.client_secret,
                         'payment_intent_id': payment_intent.id,
                         'amount': str(order.total_amount),
-                        'currency': 'BDT'
+                        'currency': 'USD'
                     }
                 }
             }, status=status.HTTP_201_CREATED)
@@ -387,16 +387,25 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Verify payment with Stripe
-            payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            # Retrieve payment intent with latest_charge expansion instead of charges
+            payment_intent = stripe.PaymentIntent.retrieve(
+                payment_intent_id,
+                expand=['latest_charge']
+            )
             
             if payment_intent.status == 'succeeded':
                 with transaction.atomic():
-                    # Update order
                     order.payment_status = 'paid'
                     order.status = 'confirmed'
                     order.confirmed_at = timezone.now()
-                    order.stripe_charge_id = payment_intent.charges.data[0].id if payment_intent.charges.data else None
+                    
+                    # Get charge ID from latest_charge
+                    if hasattr(payment_intent, 'latest_charge') and payment_intent.latest_charge:
+                        if isinstance(payment_intent.latest_charge, str):
+                            order.stripe_charge_id = payment_intent.latest_charge
+                        else:
+                            order.stripe_charge_id = payment_intent.latest_charge.id
+                    
                     order.save()
                     
                     # Reduce stock
@@ -429,7 +438,6 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
         """Cancel an order"""
         order = self.get_object()
         
-        # Only allow cancellation of pending/confirmed orders
         if order.status not in ['pending', 'confirmed']:
             return Response({
                 'success': False,
@@ -450,7 +458,6 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                         'message': f'Refund failed: {str(e)}'
                     }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Restore stock if order was confirmed
             if order.status == 'confirmed':
                 phone_model = order.phone_model
                 phone_model.stock_quantity += order.quantity
@@ -473,7 +480,15 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         
         data = serializer.validated_data
-        phone_model = NewPhoneModel.objects.get(id=data['phone_model_id'])
+        
+        try:
+            phone_model = NewPhoneModel.objects.get(id=data['phone_model_id'])
+        except NewPhoneModel.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Phone model not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
         quantity = data.get('quantity', 1)
         
         # Calculate subtotal
@@ -523,15 +538,23 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
 # ==================== REVIEW VIEWSET ====================
 class PhoneReviewViewSet(viewsets.ModelViewSet):
     serializer_class = PhoneReviewSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    http_method_names = ['get', 'post', 'delete']  # Only allow GET, POST, DELETE
 
     def get_queryset(self):
-        queryset = NewPhoneReview.objects.select_related('phone_model__brand')
+        queryset = NewPhoneReview.objects.select_related('phone_model__brand', 'order')
         
-        # Filter by phone model
+        # Filter by phone model (for admin to see all reviews of a product)
         phone_id = self.request.query_params.get('phone_model')
         if phone_id:
             queryset = queryset.filter(phone_model_id=phone_id)
+        
+        # Filter by user's own reviews
+        if self.request.user.is_authenticated and self.request.query_params.get('my_reviews'):
+            queryset = queryset.filter(
+                Q(order__user=self.request.user) | 
+                Q(customer_email=self.request.user.email)
+            )
         
         return queryset.order_by('-created_at')
 
@@ -545,37 +568,47 @@ class PhoneReviewViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        """Create review - must be from a paid order"""
+        create_serializer = PhoneReviewCreateSerializer(data=request.data)
+        create_serializer.is_valid(raise_exception=True)
         
+        # Get order
+        order = NewPhoneOrder.objects.get(id=create_serializer.validated_data['order_id'])
+        
+        # Create review
+        review = NewPhoneReview.objects.create(
+            order=order,
+            phone_model=order.phone_model,
+            customer_name=order.customer_name,
+            customer_email=order.customer_email,
+            rating=create_serializer.validated_data['rating'],
+            review=create_serializer.validated_data.get('review', '')
+        )
+        
+        serializer = self.get_serializer(review)
         return Response({
             'success': True,
             'message': 'Review created successfully',
             'data': serializer.data
         }, status=status.HTTP_201_CREATED)
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        
-        return Response({
-            'success': True,
-            'message': 'Review updated successfully',
-            'data': serializer.data
-        }, status=status.HTTP_200_OK)
-
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        instance.delete()
-        return Response({
-            'success': True,
-            'message': 'Review deleted successfully'
-        }, status=status.HTTP_200_OK)
         
+        # Only allow deletion by order owner or admin
+        if request.user.is_authenticated:
+            if request.user.role == 'admin' or instance.order.user == request.user or instance.customer_email == request.user.email:
+                instance.delete()
+                return Response({
+                    'success': True,
+                    'message': 'Review deleted successfully'
+                }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'success': False,
+            'message': 'Permission denied'
+        }, status=status.HTTP_403_FORBIDDEN)
+
 
 # ========== NEW VIEWSET FOR ADMIN ORDER LIST ==========
 from rest_framework.views import APIView
@@ -653,14 +686,14 @@ class AdminOrderListView(APIView):
         payment_summary = {item['payment_status']: item['count'] for item in payment_counts}
         
         # Calculate total revenue (only paid orders)
-        # total_revenue = queryset.filter(
-        #     payment_status='paid'
-        # ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        total_revenue = queryset.filter(
+            payment_status='paid'
+        ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
         
         # Calculate pending revenue
-        # pending_revenue = queryset.filter(
-        #     payment_status='pending'
-        # ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        pending_revenue = queryset.filter(
+            payment_status='pending'
+        ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
         # ========== END STATISTICS ==========
 
         # Serialize order data
@@ -671,10 +704,10 @@ class AdminOrderListView(APIView):
             'message': 'Admin order list retrieved successfully',
             'statistics': {
                 'total_orders': total_orders,
-                # 'status_summary': status_summary,
-                # 'payment_summary': payment_summary,
-                # 'total_revenue': str(total_revenue),
-                # 'pending_revenue': str(pending_revenue)
+                'status_summary': status_summary,
+                'payment_summary': payment_summary,
+                'total_revenue': str(total_revenue),
+                'pending_revenue': str(pending_revenue)
             },
             'data': serializer.data
         }, status=status.HTTP_200_OK)

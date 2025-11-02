@@ -73,3 +73,566 @@ User Flow Example:
 
 
 https://claude.ai/share/acb106f9-89b3-4bad-832e-ecc9230a7832
+
+
+#========================================================
+Review Section
+#========================================================
+Review API Documentation
+Complete API documentation for the review system across all three modules: Brand New Phones, Repair Orders, and Accessories.
+
+Table of Contents
+
+Brand New Phone Reviews
+Repair Service Reviews
+Accessory Reviews
+
+
+1. Brand New Phone Reviews
+Base URL
+/api/brand-new-phones/reviews/
+
+1.1 Create Review
+Endpoint: POST /api/brand-new-phones/reviews/
+Description: Create a review for a purchased phone. User must have a paid order.
+Authentication: Not required (but order must exist)
+Request Body:
+json{
+    "order_id": 123,
+    "rating": 5,
+    "review": "Excellent phone! Very happy with my purchase."
+}
+Field Descriptions:
+FieldTypeRequiredConstraintsDescriptionorder_idintegerYesMust be a paid orderOrder ID from which to create reviewratingintegerYes1-5Rating out of 5 starsreviewstringNoMax 1000 charsReview text/comment
+Success Response (201 Created):
+json{
+    "success": true,
+    "message": "Review created successfully",
+    "data": {
+        "id": 1,
+        "order": 123,
+        "order_number": "ORD-20251101-ABC123",
+        "phone_model": 10,
+        "phone_name": "iPhone 15 Pro",
+        "phone_brand": "Apple",
+        "customer_name": "John Doe",
+        "customer_email": "john@example.com",
+        "rating": 5,
+        "review": "Excellent phone! Very happy with my purchase.",
+        "created_at": "2025-11-02T10:30:00Z"
+    }
+}
+Error Responses:
+400 Bad Request - Order not paid:
+json{
+    "order_id": ["Order not found or payment not completed"]
+}
+400 Bad Request - Already reviewed:
+json{
+    "non_field_errors": ["You have already reviewed this order"]
+}
+400 Bad Request - Invalid rating:
+json{
+    "rating": ["Ensure this value is greater than or equal to 1."]
+}
+
+1.2 Get All Reviews (Admin - By Product)
+Endpoint: GET /api/brand-new-phones/reviews/?phone_model={phone_model_id}
+Description: Get all reviews for a specific phone model. Used by admin to see product reviews.
+Authentication: Not required
+Query Parameters:
+ParameterTypeRequiredDescriptionphone_modelintegerYesFilter reviews by phone model ID
+Example Request:
+bashGET /api/brand-new-phones/reviews/?phone_model=10
+Success Response (200 OK):
+json{
+    "success": true,
+    "message": "Reviews retrieved successfully",
+    "data": [
+        {
+            "id": 1,
+            "order": 123,
+            "order_number": "ORD-20251101-ABC123",
+            "phone_model": 10,
+            "phone_name": "iPhone 15 Pro",
+            "phone_brand": "Apple",
+            "customer_name": "John Doe",
+            "customer_email": "john@example.com",
+            "rating": 5,
+            "review": "Excellent phone!",
+            "created_at": "2025-11-02T10:30:00Z"
+        },
+        {
+            "id": 2,
+            "order": 124,
+            "order_number": "ORD-20251101-XYZ456",
+            "phone_model": 10,
+            "phone_name": "iPhone 15 Pro",
+            "phone_brand": "Apple",
+            "customer_name": "Jane Smith",
+            "customer_email": "jane@example.com",
+            "rating": 4,
+            "review": "Good phone, battery life could be better.",
+            "created_at": "2025-11-01T15:20:00Z"
+        }
+    ]
+}
+```
+
+---
+
+### **1.3 Get My Reviews (User)**
+
+**Endpoint:** `GET /api/brand-new-phones/reviews/?my_reviews=true`
+
+**Description:** Get all reviews created by the authenticated user.
+
+**Authentication:** Required (JWT Token)
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| my_reviews | boolean | Yes | Set to `true` to filter user's own reviews |
+
+**Request Headers:**
+```
+Authorization: Bearer <jwt_token>
+Example Request:
+bashGET /api/brand-new-phones/reviews/?my_reviews=true
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Success Response (200 OK):
+json{
+    "success": true,
+    "message": "Reviews retrieved successfully",
+    "data": [
+        {
+            "id": 1,
+            "order": 123,
+            "order_number": "ORD-20251101-ABC123",
+            "phone_model": 10,
+            "phone_name": "iPhone 15 Pro",
+            "phone_brand": "Apple",
+            "customer_name": "John Doe",
+            "customer_email": "john@example.com",
+            "rating": 5,
+            "review": "Excellent phone!",
+            "created_at": "2025-11-02T10:30:00Z"
+        }
+    ]
+}
+
+1.4 Get All Reviews (No Filter)
+Endpoint: GET /api/brand-new-phones/reviews/
+Description: Get all phone reviews without filtering.
+Authentication: Not required
+Success Response (200 OK):
+json{
+    "success": true,
+    "message": "Reviews retrieved successfully",
+    "data": [
+        {
+            "id": 1,
+            "order": 123,
+            "order_number": "ORD-20251101-ABC123",
+            "phone_model": 10,
+            "phone_name": "iPhone 15 Pro",
+            "phone_brand": "Apple",
+            "customer_name": "John Doe",
+            "customer_email": "john@example.com",
+            "rating": 5,
+            "review": "Excellent phone!",
+            "created_at": "2025-11-02T10:30:00Z"
+        }
+    ]
+}
+```
+
+---
+
+### **1.5 Delete Review**
+
+**Endpoint:** `DELETE /api/brand-new-phones/reviews/{review_id}/`
+
+**Description:** Delete a review. Only the review owner or admin can delete.
+
+**Authentication:** Required (JWT Token)
+
+**Request Headers:**
+```
+Authorization: Bearer <jwt_token>
+Example Request:
+bashDELETE /api/brand-new-phones/reviews/1/
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Success Response (200 OK):
+json{
+    "success": true,
+    "message": "Review deleted successfully"
+}
+Error Response (403 Forbidden):
+json{
+    "success": false,
+    "message": "Permission denied"
+}
+```
+
+---
+
+## **2. Repair Service Reviews**
+
+### **Base URL**
+```
+/api/repairs/reviews/
+
+2.1 Create Review
+Endpoint: POST /api/repairs/reviews/
+Description: Create a review for a completed repair service. User must have a paid order.
+Authentication: Not required (but order must exist)
+Request Body:
+json{
+    "order_id": 45,
+    "rating": 5,
+    "review": "Excellent repair service! Phone works perfectly now."
+}
+Field Descriptions:
+FieldTypeRequiredConstraintsDescriptionorder_idintegerYesMust be a paid repair orderRepair order IDratingintegerYes1-5Rating out of 5 starsreviewstringNoMax 1000 charsReview text/comment
+Success Response (201 Created):
+json{
+    "success": true,
+    "message": "Review created successfully",
+    "data": {
+        "id": 1,
+        "order": 45,
+        "order_number": "ORD-20251101-REP001",
+        "phone_model": 8,
+        "phone_name": "iPhone 14 - Apple",
+        "phone_brand": "Apple",
+        "customer_name": "John Doe",
+        "customer_email": "john@example.com",
+        "rating": 5,
+        "review": "Excellent repair service! Phone works perfectly now.",
+        "created_at": "2025-11-02T10:30:00Z"
+    }
+}
+Error Responses:
+400 Bad Request - Order not paid:
+json{
+    "order_id": ["Order not found or payment not completed"]
+}
+400 Bad Request - Already reviewed:
+json{
+    "non_field_errors": ["You have already reviewed this order"]
+}
+
+2.2 Get All Reviews (Admin - By Phone Model)
+Endpoint: GET /api/repairs/reviews/?phone_model={phone_model_id}
+Description: Get all repair reviews for a specific phone model.
+Authentication: Not required
+Query Parameters:
+ParameterTypeRequiredDescriptionphone_modelintegerYesFilter reviews by phone model ID
+Example Request:
+bashGET /api/repairs/reviews/?phone_model=8
+Success Response (200 OK):
+json{
+    "success": true,
+    "message": "Reviews retrieved successfully",
+    "data": [
+        {
+            "id": 1,
+            "order": 45,
+            "order_number": "ORD-20251101-REP001",
+            "phone_model": 8,
+            "phone_name": "iPhone 14 - Apple",
+            "phone_brand": "Apple",
+            "customer_name": "John Doe",
+            "customer_email": "john@example.com",
+            "rating": 5,
+            "review": "Excellent repair service!",
+            "created_at": "2025-11-02T10:30:00Z"
+        },
+        {
+            "id": 2,
+            "order": 46,
+            "order_number": "ORD-20251101-REP002",
+            "phone_model": 8,
+            "phone_name": "iPhone 14 - Apple",
+            "phone_brand": "Apple",
+            "customer_name": "Jane Smith",
+            "customer_email": "jane@example.com",
+            "rating": 4,
+            "review": "Good service, took a bit longer than expected.",
+            "created_at": "2025-11-01T15:20:00Z"
+        }
+    ]
+}
+```
+
+---
+
+### **2.3 Get My Reviews (User)**
+
+**Endpoint:** `GET /api/repairs/reviews/?my_reviews=true`
+
+**Description:** Get all repair reviews created by the authenticated user.
+
+**Authentication:** Required (JWT Token)
+
+**Request Headers:**
+```
+Authorization: Bearer <jwt_token>
+Example Request:
+bashGET /api/repairs/reviews/?my_reviews=true
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Success Response (200 OK):
+json{
+    "success": true,
+    "message": "Reviews retrieved successfully",
+    "data": [
+        {
+            "id": 1,
+            "order": 45,
+            "order_number": "ORD-20251101-REP001",
+            "phone_model": 8,
+            "phone_name": "iPhone 14 - Apple",
+            "phone_brand": "Apple",
+            "customer_name": "John Doe",
+            "customer_email": "john@example.com",
+            "rating": 5,
+            "review": "Excellent repair service!",
+            "created_at": "2025-11-02T10:30:00Z"
+        }
+    ]
+}
+```
+
+---
+
+### **2.4 Delete Review**
+
+**Endpoint:** `DELETE /api/repairs/reviews/{review_id}/`
+
+**Description:** Delete a repair review. Only the review owner or admin can delete.
+
+**Authentication:** Required (JWT Token)
+
+**Request Headers:**
+```
+Authorization: Bearer <jwt_token>
+Example Request:
+bashDELETE /api/repairs/reviews/1/
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Success Response (200 OK):
+json{
+    "success": true,
+    "message": "Review deleted successfully"
+}
+Error Response (403 Forbidden):
+json{
+    "success": false,
+    "message": "Permission denied"
+}
+```
+
+---
+
+## **3. Accessory Reviews**
+
+### **Base URL**
+```
+/api/accessories/reviews/
+
+3.1 Create Review
+Endpoint: POST /api/accessories/reviews/
+Description: Create a review for a purchased accessory. User must have a paid order.
+Authentication: Not required (but order must exist)
+Request Body:
+json{
+    "order_id": 78,
+    "rating": 5,
+    "review": "Amazing quality! Fast charging works perfectly."
+}
+Field Descriptions:
+FieldTypeRequiredConstraintsDescriptionorder_idintegerYesMust be a paid accessory orderAccessory order IDratingintegerYes1-5Rating out of 5 starsreviewstringNoMax 1000 charsReview text/comment
+Success Response (201 Created):
+json{
+    "success": true,
+    "message": "Review created successfully",
+    "data": {
+        "id": 1,
+        "order": 78,
+        "order_number": "ORD-20251101-ACS001",
+        "product": 5,
+        "product_title": "Fast Charger 65W",
+        "customer_name": "John Doe",
+        "customer_email": "john@example.com",
+        "rating": 5,
+        "review": "Amazing quality! Fast charging works perfectly.",
+        "created_at": "2025-11-02T10:30:00Z"
+    }
+}
+Error Responses:
+400 Bad Request - Order not paid:
+json{
+    "order_id": ["Order not found or payment not completed"]
+}
+400 Bad Request - Already reviewed:
+json{
+    "non_field_errors": ["You have already reviewed this order"]
+}
+
+3.2 Get All Reviews (Admin - By Product)
+Endpoint: GET /api/accessories/reviews/?product={product_id}
+Description: Get all reviews for a specific accessory product.
+Authentication: Not required
+Query Parameters:
+ParameterTypeRequiredDescriptionproductintegerYesFilter reviews by product ID
+Example Request:
+bashGET /api/accessories/reviews/?product=5
+Success Response (200 OK):
+json{
+    "success": true,
+    "message": "Reviews retrieved successfully",
+    "data": [
+        {
+            "id": 1,
+            "order": 78,
+            "order_number": "ORD-20251101-ACS001",
+            "product": 5,
+            "product_title": "Fast Charger 65W",
+            "customer_name": "John Doe",
+            "customer_email": "john@example.com",
+            "rating": 5,
+            "review": "Amazing quality!",
+            "created_at": "2025-11-02T10:30:00Z"
+        },
+        {
+            "id": 2,
+            "order": 79,
+            "order_number": "ORD-20251101-ACS002",
+            "product": 5,
+            "product_title": "Fast Charger 65W",
+            "customer_name": "Jane Smith",
+            "customer_email": "jane@example.com",
+            "rating": 4,
+            "review": "Good charger, heats up a bit during use.",
+            "created_at": "2025-11-01T15:20:00Z"
+        }
+    ]
+}
+```
+
+---
+
+### **3.3 Get My Reviews (User)**
+
+**Endpoint:** `GET /api/accessories/reviews/?my_reviews=true`
+
+**Description:** Get all accessory reviews created by the authenticated user.
+
+**Authentication:** Required (JWT Token)
+
+**Request Headers:**
+```
+Authorization: Bearer <jwt_token>
+Example Request:
+bashGET /api/accessories/reviews/?my_reviews=true
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Success Response (200 OK):
+json{
+    "success": true,
+    "message": "Reviews retrieved successfully",
+    "data": [
+        {
+            "id": 1,
+            "order": 78,
+            "order_number": "ORD-20251101-ACS001",
+            "product": 5,
+            "product_title": "Fast Charger 65W",
+            "customer_name": "John Doe",
+            "customer_email": "john@example.com",
+            "rating": 5,
+            "review": "Amazing quality!",
+            "created_at": "2025-11-02T10:30:00Z"
+        }
+    ]
+}
+```
+
+---
+
+### **3.4 Delete Review**
+
+**Endpoint:** `DELETE /api/accessories/reviews/{review_id}/`
+
+**Description:** Delete an accessory review. Only the review owner or admin can delete.
+
+**Authentication:** Required (JWT Token)
+
+**Request Headers:**
+```
+Authorization: Bearer <jwt_token>
+Example Request:
+bashDELETE /api/accessories/reviews/1/
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Success Response (200 OK):
+json{
+    "success": true,
+    "message": "Review deleted successfully"
+}
+Error Response (403 Forbidden):
+json{
+    "success": false,
+    "message": "Permission denied"
+}
+
+Common Error Responses
+401 Unauthorized
+When trying to access protected endpoints without authentication:
+json{
+    "detail": "Authentication credentials were not provided."
+}
+404 Not Found
+When review ID doesn't exist:
+json{
+    "detail": "Not found."
+}
+500 Internal Server Error
+json{
+    "success": false,
+    "message": "An error occurred while processing your request"
+}
+
+Quick Reference Summary
+ActionMethodEndpointAuth RequiredCreate ReviewPOST/reviews/No (order must exist)Get Product ReviewsGET/reviews/?phone_model={id} or /reviews/?product={id}NoGet My ReviewsGET/reviews/?my_reviews=trueYesGet All ReviewsGET/reviews/NoDelete ReviewDELETE/reviews/{id}/Yes
+
+Business Rules
+
+✅ Order Requirement: User must have a paid order to create a review
+✅ One Review Per Order: Each order can only be reviewed once
+✅ Auto-fill Data: Customer name and email are automatically taken from the order
+✅ Rating Range: Rating must be between 1 and 5
+✅ Review Length: Review text is optional, max 1000 characters
+✅ Delete Permission: Only order owner or admin can delete reviews
+✅ Public Access: Reviews can be viewed without authentication
+✅ User Filter: Authenticated users can filter their own reviews
+
+
+Integration Examples
+cURL Examples
+Create Review:
+bashcurl -X POST http://localhost:8000/api/brand-new-phones/reviews/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "order_id": 123,
+    "rating": 5,
+    "review": "Excellent product!"
+  }'
+Get Product Reviews:
+bashcurl -X GET "http://localhost:8000/api/brand-new-phones/reviews/?phone_model=10"
+Get My Reviews:
+bashcurl -X GET "http://localhost:8000/api/brand-new-phones/reviews/?my_reviews=true" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+Delete Review:
+bashcurl -X DELETE http://localhost:8000/api/brand-new-phones/reviews/1/ \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+This documentation covers all review endpoints for all three modules with complete request/response examples and business rules!

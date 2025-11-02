@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from accounts.permissions import IsAdmin, IsUser, IsOwnerOrReadOnly
 from django.db import transaction
 from django.db.models import Q
@@ -139,7 +139,7 @@ class AcsWebsiteDiscountViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(discount)
             return Response({
                 'success': True,
-                'message': 'Active discount retrieved',
+                'message': 'Discounts retrieved successfully',
                 'data': serializer.data
             }, status=status.HTTP_200_OK)
         
@@ -236,7 +236,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
             website_discount_amount = active_discount.amount
         
         # Calculate shipping
-        shipping_cost = Decimal('00.00')
+        shipping_cost = Decimal('0.00')
         
         # Calculate prices
         unit_price = product.final_price
@@ -306,7 +306,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
                 }
             }, status=status.HTTP_201_CREATED)
             
-        except stripe.error.StripeError as e:
+        except Exception as e:
             # If Stripe fails, delete the order
             order.delete()
             return Response({
@@ -329,7 +329,10 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
         
         try:
             # Verify payment with Stripe
-            payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            payment_intent = stripe.PaymentIntent.retrieve(
+                payment_intent_id,
+                expand=['latest_charge']
+            )
             
             if payment_intent.status == 'succeeded':
                 with transaction.atomic():
@@ -337,7 +340,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
                     order.payment_status = 'paid'
                     order.status = 'confirmed'
                     order.confirmed_at = timezone.now()
-                    order.stripe_charge_id = payment_intent.charges.data[0].id if payment_intent.charges.data else None
+                    order.stripe_charge_id = payment_intent.latest_charge if hasattr(payment_intent, 'latest_charge') else None
                     order.save()
                     
                     # Reduce stock
@@ -359,7 +362,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
                     'message': f'Payment not completed. Status: {payment_intent.status}'
                 }, status=status.HTTP_400_BAD_REQUEST)
                 
-        except stripe.error.StripeError as e:
+        except Exception as e:
             return Response({
                 'success': False,
                 'message': f'Payment verification failed: {str(e)}'
@@ -385,7 +388,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
                         payment_intent=order.stripe_payment_intent_id
                     )
                     order.payment_status = 'refunded'
-                except stripe.error.StripeError as e:
+                except Exception as e:
                     return Response({
                         'success': False,
                         'message': f'Refund failed: {str(e)}'
@@ -437,7 +440,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
         discount += website_discount_amount
         
         # Shipping
-        shipping_cost = Decimal('100.00')
+        shipping_cost = Decimal('0.00')
         
         # Total
         total_amount = subtotal - discount + shipping_cost
@@ -463,15 +466,23 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
 # ==================== REVIEW VIEWSET ====================
 class AcsReviewViewSet(viewsets.ModelViewSet):
     serializer_class = AcsReviewSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    http_method_names = ['get', 'post', 'delete']  # Only allow GET, POST, DELETE
 
     def get_queryset(self):
-        queryset = AcsReview.objects.select_related('product')
+        queryset = AcsReview.objects.select_related('product', 'order')
         
-        # Filter by product
+        # Filter by product (for admin to see all reviews of a product)
         product_id = self.request.query_params.get('product')
         if product_id:
             queryset = queryset.filter(product_id=product_id)
+        
+        # Filter by user's own reviews
+        if self.request.user.is_authenticated and self.request.query_params.get('my_reviews'):
+            queryset = queryset.filter(
+                Q(order__user=self.request.user) | 
+                Q(customer_email=self.request.user.email)
+            )
         
         return queryset.order_by('-created_at')
 
@@ -485,36 +496,46 @@ class AcsReviewViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        """Create review - must be from a paid order"""
+        create_serializer = AcsReviewCreateSerializer(data=request.data)
+        create_serializer.is_valid(raise_exception=True)
         
+        # Get order
+        order = AcsOrder.objects.get(id=create_serializer.validated_data['order_id'])
+        
+        # Create review
+        review = AcsReview.objects.create(
+            order=order,
+            product=order.product,
+            customer_name=order.customer_name,
+            customer_email=order.customer_email,
+            rating=create_serializer.validated_data['rating'],
+            review=create_serializer.validated_data.get('review', '')
+        )
+        
+        serializer = self.get_serializer(review)
         return Response({
             'success': True,
             'message': 'Review created successfully',
             'data': serializer.data
         }, status=status.HTTP_201_CREATED)
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        
-        return Response({
-            'success': True,
-            'message': 'Review updated successfully',
-            'data': serializer.data
-        }, status=status.HTTP_200_OK)
-
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        instance.delete()
+        
+        # Only allow deletion by order owner or admin
+        if request.user.is_authenticated:
+            if request.user.role == 'admin' or instance.order.user == request.user or instance.customer_email == request.user.email:
+                instance.delete()
+                return Response({
+                    'success': True,
+                    'message': 'Review deleted successfully'
+                }, status=status.HTTP_200_OK)
+        
         return Response({
-            'success': True,
-            'message': 'Review deleted successfully'
-        }, status=status.HTTP_200_OK)
+            'success': False,
+            'message': 'Permission denied'
+        }, status=status.HTTP_403_FORBIDDEN)
     
 
 # ========== NEW VIEW FOR ADMIN ACCESSORY ORDER LIST ==========
@@ -606,39 +627,39 @@ class AdminAcsOrderListView(APIView):
         payment_summary = {item['payment_status']: item['count'] for item in payment_counts}
         
         # Calculate total revenue (only paid orders)
-        # total_revenue = queryset.filter(
-        #     payment_status='paid'
-        # ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        total_revenue = queryset.filter(
+            payment_status='paid'
+        ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
         
-        # # Calculate pending revenue
-        # pending_revenue = queryset.filter(
-        #     payment_status='pending'
-        # ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        # Calculate pending revenue
+        pending_revenue = queryset.filter(
+            payment_status='pending'
+        ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
         
         # Calculate average order value
-        # average_order_value = queryset.filter(
-        #     payment_status='paid'
-        # ).aggregate(avg=Avg('total_amount'))['avg'] or Decimal('0.00')
+        average_order_value = queryset.filter(
+            payment_status='paid'
+        ).aggregate(avg=Avg('total_amount'))['avg'] or Decimal('0.00')
         
         # Calculate total items sold (sum of quantities)
-        # total_items_sold = queryset.filter(
-        #     payment_status='paid'
-        # ).aggregate(total=Sum('quantity'))['total'] or 0
+        total_items_sold = queryset.filter(
+            payment_status='paid'
+        ).aggregate(total=Sum('quantity'))['total'] or 0
         
         # Most popular products
-        # top_products = queryset.filter(
-        #     payment_status='paid'
-        # ).values(
-        #     'product__title', 'product__id'
-        # ).annotate(
-        #     total_quantity=Sum('quantity'),
-        #     order_count=Count('id')
-        # ).order_by('-total_quantity')[:5]
+        top_products = queryset.filter(
+            payment_status='paid'
+        ).values(
+            'product__title', 'product__id'
+        ).annotate(
+            total_quantity=Sum('quantity'),
+            order_count=Count('id')
+        ).order_by('-total_quantity')[:5]
         
         # Orders by city (top 5)
-        # top_cities = queryset.values('city').annotate(
-        #     count=Count('id')
-        # ).order_by('-count')[:5]
+        top_cities = queryset.values('city').annotate(
+            count=Count('id')
+        ).order_by('-count')[:5]
         # ========== END STATISTICS ==========
 
         # Serialize order data
@@ -649,14 +670,14 @@ class AdminAcsOrderListView(APIView):
             'message': 'Admin accessory order list retrieved successfully',
             'statistics': {
                 'total_orders': total_orders,
-                # 'status_summary': status_summary,
-                # 'payment_summary': payment_summary,
-                # 'total_revenue': str(total_revenue),
-                # 'pending_revenue': str(pending_revenue),
-                # 'average_order_value': str(round(average_order_value, 2)) if average_order_value else '0.00',
-                # 'total_items_sold': total_items_sold,
-                # 'top_products': list(top_products),
-                # 'top_cities': list(top_cities)
+                'status_summary': status_summary,
+                'payment_summary': payment_summary,
+                'total_revenue': str(total_revenue),
+                'pending_revenue': str(pending_revenue),
+                'average_order_value': str(round(average_order_value, 2)) if average_order_value and average_order_value > 0 else '0.00',
+                'total_items_sold': total_items_sold,
+                'top_products': list(top_products),
+                'top_cities': list(top_cities)
             },
             'data': serializer.data
         }, status=status.HTTP_200_OK)

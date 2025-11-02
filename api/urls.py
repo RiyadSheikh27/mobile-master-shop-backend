@@ -10,7 +10,7 @@ router.register(r'repair/models', PhoneModelViewSet, basename='phonemodel')
 router.register(r'repair/problems', PhoneProblemViewSet, basename='phoneproblem')
 router.register(r'repair/repair-prices', RepairPriceViewSet, basename='repairprice')
 router.register(r'repair/orders', OrderViewSet, basename='order')
-router.register(r'repair/discounts', DiscountViewSet, basename='websitediscount')
+router.register(r'repair/discount', DiscountViewSet, basename='websitediscount')
 router.register(r'repair/review', RepairReviewViewSet, basename='repair-review')
 
 router.register(r'brandnew/brands', NewPhoneBrandViewSet, basename='newphonebrand')
@@ -23,7 +23,7 @@ router.register(r'brandnew/orders', NewPhoneOrderViewSet, basename = 'newphoneor
 router.register(r'accessories/products', AcsProductViewSet, basename='acsproduct')
 router.register(r'accessories/discount', AcsWebsiteDiscountViewSet, basename='acsdiscount')
 router.register(r'accessories/orders', AcsOrderViewSet, basename='acsorder')
-router.register(r'accessories/reviews', AcsReviewViewSet, basename='acsreview')
+router.register(r'accessories/review', AcsReviewViewSet, basename='acsreview')
 
 urlpatterns = [
     path('', include(router.urls)),

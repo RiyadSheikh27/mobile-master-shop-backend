@@ -78,6 +78,15 @@ class DiscountViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return WebsiteDiscount.objects.filter(is_active=True)
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'message': 'Discounts retrieved successfully',
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
 
 
 class PhoneProblemViewSet(viewsets.ModelViewSet):
@@ -903,17 +912,26 @@ class OrderViewSet(viewsets.ModelViewSet):
             {"success": True, "data": serializer.data}, status=status.HTTP_200_OK
         )
     
+#=========== Repair Review Portion =============
 class RepairReviewViewSet(viewsets.ModelViewSet):
     serializer_class = RepairReviewSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    http_method_names = ['get', 'post', 'delete']  # Only allow GET, POST, DELETE
 
     def get_queryset(self):
-        queryset = PhoneReview.objects.select_related('phone_model__brand')
+        queryset = PhoneReview.objects.select_related('phone_model__brand', 'order')
         
-        # Filter by phone model
+        # Filter by phone model (for admin to see all reviews of a product)
         phone_id = self.request.query_params.get('phone_model')
         if phone_id:
             queryset = queryset.filter(phone_model_id=phone_id)
+        
+        # Filter by user's own reviews
+        if self.request.user.is_authenticated and self.request.query_params.get('my_reviews'):
+            queryset = queryset.filter(
+                Q(order__user=self.request.user) | 
+                Q(customer_email=self.request.user.email)
+            )
         
         return queryset.order_by('-created_at')
 
@@ -927,37 +945,48 @@ class RepairReviewViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        """Create review - must be from a paid order"""
+        create_serializer = RepairReviewCreateSerializer(data=request.data)
+        create_serializer.is_valid(raise_exception=True)
         
+        # Get order
+        order = Order.objects.get(id=create_serializer.validated_data['order_id'])
+        
+        # Create review
+        review = PhoneReview.objects.create(
+            order=order,
+            phone_model=order.phone_model,
+            customer_name=order.customer_name,
+            customer_email=order.customer_email,
+            rating=create_serializer.validated_data['rating'],
+            review=create_serializer.validated_data.get('review', '')
+        )
+        
+        serializer = self.get_serializer(review)
         return Response({
             'success': True,
             'message': 'Review created successfully',
             'data': serializer.data
         }, status=status.HTTP_201_CREATED)
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        
-        return Response({
-            'success': True,
-            'message': 'Review updated successfully',
-            'data': serializer.data
-        }, status=status.HTTP_200_OK)
-
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        instance.delete()
+        
+        # Only allow deletion by order owner or admin
+        if request.user.is_authenticated:
+            if request.user.role == 'admin' or instance.order.user == request.user or instance.customer_email == request.user.email:
+                instance.delete()
+                return Response({
+                    'success': True,
+                    'message': 'Review deleted successfully'
+                }, status=status.HTTP_200_OK)
+        
         return Response({
-            'success': True,
-            'message': 'Review deleted successfully'
-        }, status=status.HTTP_200_OK)
-    
+            'success': False,
+            'message': 'Permission denied'
+        }, status=status.HTTP_403_FORBIDDEN)
+
+
 # ========== NEW VIEW FOR ADMIN REPAIR ORDER LIST ==========
 from rest_framework.views import APIView
 from django.db.models import Count, Sum, Avg, Q
@@ -1053,20 +1082,20 @@ class AdminRepairOrderListView(APIView):
         payment_counts = queryset.values('payment_status').annotate(count=Count('id'))
         payment_summary = {item['payment_status']: item['count'] for item in payment_counts}
         
-        # # Calculate total revenue (only paid orders)
-        # total_revenue = queryset.filter(
-        #     payment_status='paid'
-        # ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        # Calculate total revenue (only paid orders)
+        total_revenue = queryset.filter(
+            payment_status='paid'
+        ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
         
         # Calculate pending revenue
-        # pending_revenue = queryset.filter(
-        #     payment_status='pending'
-        # ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        pending_revenue = queryset.filter(
+            payment_status='pending'
+        ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
         
         # Calculate average order value
-        # average_order_value = queryset.filter(
-        #     payment_status='paid'
-        # ).aggregate(avg=Avg('total_amount'))['avg'] or Decimal('0.00')
+        average_order_value = queryset.filter(
+            payment_status='paid'
+        ).aggregate(avg=Avg('total_amount'))['avg'] or Decimal('0.00')
         
         # Count total repair items across all orders
         total_repair_items = OrderItem.objects.filter(
@@ -1091,10 +1120,10 @@ class AdminRepairOrderListView(APIView):
             'message': 'Admin repair order list retrieved successfully',
             'statistics': {
                 'total_orders': total_orders,
-                # 'status_summary': status_summary,
-                # 'payment_summary': payment_summary,
-                # 'total_revenue': str(total_revenue),
-                # 'pending_revenue': str(pending_revenue),
+                'status_summary': status_summary,
+                'payment_summary': payment_summary,
+                'total_revenue': str(total_revenue),
+                'pending_revenue': str(pending_revenue),
                 # 'average_order_value': str(round(average_order_value, 2)) if average_order_value else '0.00',
                 'total_repair_items': total_repair_items,
                 # 'top_repair_problems': list(top_problems)
