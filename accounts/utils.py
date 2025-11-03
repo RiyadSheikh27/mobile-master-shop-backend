@@ -33,12 +33,6 @@ def verify_google_access_token(access_token):
             logger.error(f"Email not found in token_info: {token_info}")
             return None
         
-        # Optionally verify the token is for your app
-        # if 'aud' in token_info:
-        #     expected_audience = settings.GOOGLE_OAUTH_CLIENT_ID
-        #     if token_info['aud'] != expected_audience:
-        #         return None
-        
         # Check if email is verified
         email_verified = token_info.get('email_verified')
         if email_verified == 'true' or email_verified is True or email_verified == True:
@@ -187,3 +181,24 @@ def get_apple_user_info(access_token):
     except Exception as e:
         logger.error(f"Error decoding Apple token: {str(e)}")
         return None
+    
+from django.core.mail import send_mail
+
+# def send_payment_emails(customer_email, subject, message):
+#     # To customer
+#     if customer_email:
+#         send_mail(
+#             subject,
+#             message,
+#             settings.EMAIL_HOST_USER,
+#             [customer_email],
+#             fail_silently=False
+#         )
+#     # To admin
+#     send_mail(
+#         f"[ADMIN COPY] {subject}",
+#         message,
+#         settings.EMAIL_HOST_USER,
+#         [settings.ADMIN_EMAIL],
+#         fail_silently=False
+#     )

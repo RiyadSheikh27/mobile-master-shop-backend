@@ -13,4 +13,5 @@ urlpatterns = [
     path('oauth/register/', OAuthRegisterView.as_view(), name='oauth-register'),
     path('oauth/login/', OAuthLoginView.as_view(), name='oauth-login'),
     path('user-list/', UserListView.as_view(), name='user-list'),
+    path('webhook/stripe/', StripeWebhookView.as_view(), name='stripe-webhook'),
 ]

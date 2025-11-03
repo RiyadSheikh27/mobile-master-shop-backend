@@ -15,6 +15,7 @@ from .serializers import *
 import stripe
 from django.conf import settings
 from django.utils import timezone
+from accounts.mypaginations import MyLimitOffsetPagination
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -519,6 +520,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             customer_name=data["customer_name"],
             customer_email=data["customer_email"],
             customer_phone=data["customer_phone"],
+            schedule=data.get("schedule"),
             phone_model=phone_model,
             subtotal=Decimal("0.00"),
             item_discount=Decimal("0.00"),
@@ -1113,6 +1115,8 @@ class AdminRepairOrderListView(APIView):
         # ========== END STATISTICS ==========
 
         # Serialize order data
+        # paginator = MyLimitOffsetPagination()
+        # page = paginator.paginate_queryset(queryset, request)  # paginated queryset
         serializer = AdminRepairOrderListSerializer(queryset, many=True)
 
         return Response({

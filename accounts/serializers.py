@@ -6,6 +6,13 @@ from django.contrib.auth.password_validation import validate_password
 class SendOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already taken.")
+
+        return value
+
+
 class VerifyOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
     code = serializers.CharField(max_length=6)
@@ -21,14 +28,13 @@ class SetCredentialsSerializer(serializers.Serializer):
         - Only lowercase letters, numbers, _, @
         - No spaces
         """
-        if len(value) < 6:
-            raise serializers.ValidationError("Username must be at least 6 characters long.")
+        # if len(value) < 6:
+        #     raise serializers.ValidationError("Username must be at least 6 characters long.")
 
-        if not re.match(r'^[a-z0-9_@.]+$', value):
-            raise serializers.ValidationError(
-                "Username can contain only lowercase letters, numbers, '_', '.' and '@'. No spaces allowed."
-            )
-
+        # if not re.match(r'^[a-z0-9_@.]+$', value):
+        #     raise serializers.ValidationError(
+        #         "Username can contain only lowercase letters, numbers, '_', '.' and '@'. No spaces allowed."
+        #     )
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError("Username already taken.")
 
@@ -56,7 +62,7 @@ class OAuthRegisterSerializer(serializers.Serializer):
 class OAuthLoginSerializer(serializers.Serializer):
     access_token = serializers.CharField()
     provider = serializers.ChoiceField(choices=['google', 'apple'])
-
+    
 class UserListSerializer(serializers.ModelSerializer):
     """Serializer for displaying user list to admin"""
     class Meta:

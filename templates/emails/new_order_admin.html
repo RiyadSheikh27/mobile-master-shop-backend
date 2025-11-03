@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>New Order Received</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f7f7f7; margin: 0; padding: 20px;">
+    <div style="max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+        <h2 style="color: #333;">New Payment Received</h2>
+
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;">Order Type</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{{ order_type }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;">Order Number</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{{ order_number }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;">Customer</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{{ customer_name }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;">Email</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{{ customer_email }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;">Phone</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{{ customer_phone }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;">Product</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{{ product_name }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;">Amount</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${{ total_amount }}</td>
+            </tr>
+        </table>
+
+        <p style="margin-top: 20px;">Check admin panel for details.</p>
+    </div>
+</body>
+</html>

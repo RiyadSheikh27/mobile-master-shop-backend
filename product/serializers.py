@@ -106,6 +106,7 @@ class OrderCreateSerializer(serializers.Serializer):
     customer_name = serializers.CharField(max_length=200)
     customer_email = serializers.EmailField()
     customer_phone = serializers.CharField(max_length=20)
+    schedule = serializers.DateTimeField(format="%Y-%m-%d %H:%M", required=False, allow_null=True)
     items = OrderItemCreateSerializer(many=True)
     notes = serializers.CharField(required=False, allow_blank=True)
     website_discount_percentage = serializers.DecimalField(
@@ -169,7 +170,7 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'id', 'order_number', 'user', 'customer_name', 'customer_email', 
-            'customer_phone', 'phone_model', 'phone_model_name', 'brand_name',
+            'customer_phone','schedule', 'phone_model', 'phone_model_name', 'brand_name',
             'subtotal', 'item_discount', 'website_discount_percentage', 
             'website_discount_amount', 'total_amount', 'total_discount',
             'status', 'status_display', 'payment_status', 'payment_status_display',
@@ -193,7 +194,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            'id', 'order_number', 'customer_name', 'customer_phone',
+            'id', 'order_number', 'customer_name', 'customer_phone', 'schedule',
             'phone_model_name', 'brand_name', 'total_amount', 'status',
             'status_display', 'payment_status', 'payment_status_display',
             'items_count', 'created_at'

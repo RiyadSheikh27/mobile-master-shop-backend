@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Payment Successful</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f7f7f7; margin: 0; padding: 20px;">
+    <div style="max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+        <h2 style="color: #333;">Payment Successful!</h2>
+        <p>Hello <strong>{{ customer_name }}</strong>,</p>
+        <p>Your payment for Order <strong>{{ order_number }}</strong> was successful!</p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;">Product</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{{ product_name }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;">Amount Paid</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${{ total_amount }}</td>
+            </tr>
+        </table>
+        
+        <p style="margin-top: 20px;">We will process your order shortly and keep you updated.</p>
+        <p>Thank you for choosing our service!</p>
+        <p><strong>MLK Phone</strong></p>
+    </div>
+</body>
+</html>

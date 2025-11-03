@@ -12,6 +12,7 @@ from accounts.permissions import IsAdmin
 import stripe
 from django.conf import settings
 from django.utils import timezone
+from accounts.mypaginations import MyLimitOffsetPagination
 
 # Initialize Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -663,6 +664,8 @@ class AdminAcsOrderListView(APIView):
         # ========== END STATISTICS ==========
 
         # Serialize order data
+        # paginator = MyLimitOffsetPagination()
+        # page = paginator.paginate_queryset(queryset, request)  # paginated queryset
         serializer = AdminAcsOrderListSerializer(queryset, many=True)
 
         return Response({

@@ -20,8 +20,15 @@ from accessories.views import *
 from .permissions import IsAdmin, IsOwnerOrReadOnly, IsUser
 from django.db.models import Count, Sum, Q
 from decimal import Decimal
+from .mypaginations import MyLimitOffsetPagination
+
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from django.template.loader import render_to_string
+from django.core.mail import EmailMultiAlternatives
 
 logger = logging.getLogger(__name__)
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 from .utils import (
     verify_google_access_token, 
@@ -59,15 +66,21 @@ class SendOTPView(APIView):
         user.username_set = False
         user.save()
 
+        # Render HTML template
+        html_content = render_to_string('emails/otp_email.html', {
+            'email': email,
+            'code': code
+        })
 
-
-        send_mail(
-            subject='Your verification code',
-            message=f'Your verification code is {code}',
+        # Send email
+        email_message = EmailMultiAlternatives(
+            subject='Your Verification Code',
+            body=f'Your verification code is {code}',  # fallback text
             from_email=settings.EMAIL_HOST_USER,
-            recipient_list=[email],
-            fail_silently=False,
+            to=[email]
         )
+        email_message.attach_alternative(html_content, "text/html")
+        email_message.send(fail_silently=False)
 
         return Response({"message": "OTP sent to your email."}, status=201)
 
@@ -173,7 +186,7 @@ class LoginView(APIView):
             },
             status=200
         )
-    
+        
 
 
 """OAuth Register View - Using Access Token"""
@@ -405,8 +418,7 @@ class OAuthLoginView(APIView):
                 {"error": f"An error occurred during login: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
-
+            
 class UserListView(APIView):
     """
     API endpoint for admins to view all registered users.
@@ -414,6 +426,7 @@ class UserListView(APIView):
     GET: Returns list of all users with their details
     """
     permission_classes = [IsAuthenticated]
+    # pagination_class = MyLimitOffsetPagination
 
     def get(self, request):
         if request.user.role != 'admin':
@@ -425,7 +438,9 @@ class UserListView(APIView):
 
         users = User.objects.all().order_by('-date_joined')
         
-        serializer = UserListSerializer(users, many=True)
+        paginator = MyLimitOffsetPagination()
+        page = paginator.paginate_queryset(users, request)  # only paginated queryset
+        serializer = UserListSerializer(page, many=True)
         
         logger.info(f"Admin {request.user.email} accessed user list. Total users: {users.count()}")
         
@@ -437,12 +452,172 @@ class UserListView(APIView):
             }, 
             status=status.HTTP_200_OK
         )
-    
+        
+#================ Webhook Implementation ================
+# ============================================
+# Add this to accounts/views.py
+# ============================================
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from django.http import HttpResponse
+from rest_framework.views import APIView
+import stripe
+from django.conf import settings
+from django.template.loader import render_to_string
+from django.core.mail import EmailMultiAlternatives
+from django.utils import timezone
+import logging
 
-#================ Admin Dashboard ================
-# class DashBoardView(APIView):
-#     permission_classes = [IsAdmin]
+logger = logging.getLogger(__name__)
 
-#     def get(self, request):
-#         if request.user.role != 'admin':
-#             return Response()
+@method_decorator(csrf_exempt, name='dispatch')
+class StripeWebhookView(APIView):
+    """
+    Unified Stripe webhook for all order types
+    Handles: Repair Orders, New Phone Orders, Accessory Orders
+    """
+    permission_classes = []
+
+    def post(self, request):
+        payload = request.body
+        sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
+        webhook_secret = settings.STRIPE_WEBHOOK_SECRET
+
+        try:
+            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+        except ValueError:
+            return HttpResponse(status=400)
+        except stripe.error.SignatureVerificationError:
+            return HttpResponse(status=400)
+
+        # Handle successful payment
+        if event['type'] == 'payment_intent.succeeded':
+            payment_intent = event['data']['object']
+            self.handle_payment_success(payment_intent)
+
+        return HttpResponse(status=200)
+
+    def handle_payment_success(self, payment_intent):
+        """Handle successful payment for any order type"""
+        from product.models import Order
+        from brandNew.models import NewPhoneOrder
+        from accessories.models import AcsOrder
+
+        payment_intent_id = payment_intent.id
+
+        # Try to find order in all three models
+        order = None
+        order_type = None
+
+        # Check Repair Orders
+        try:
+            order = Order.objects.get(payment_intent_id=payment_intent_id)
+            order_type = 'repair'
+        except Order.DoesNotExist:
+            pass
+
+        # Check New Phone Orders
+        if not order:
+            try:
+                order = NewPhoneOrder.objects.get(stripe_payment_intent_id=payment_intent_id)
+                order_type = 'phone'
+            except NewPhoneOrder.DoesNotExist:
+                pass
+
+        # Check Accessory Orders
+        if not order:
+            try:
+                order = AcsOrder.objects.get(stripe_payment_intent_id=payment_intent_id)
+                order_type = 'accessory'
+            except AcsOrder.DoesNotExist:
+                pass
+
+        # If order found, process it
+        if order and order.payment_status != 'paid':
+            try:
+                # Update order
+                order.payment_status = 'paid'
+                order.status = 'confirmed'
+                order.confirmed_at = timezone.now()
+                order.save()
+
+                # Send customer email
+                self.send_customer_email(order, order_type)
+
+                # Send admin email
+                self.send_admin_email(order, order_type)
+
+                logger.info(f"Webhook: Payment confirmed for {order_type} order {order.order_number}")
+
+            except Exception as e:
+                logger.error(f"Webhook error: {str(e)}")
+
+    def send_customer_email(self, order, order_type):
+        """Send payment confirmation to customer with HTML template"""
+        if order_type == 'repair':
+            product_name = f"{order.phone_model} Repair"
+        elif order_type == 'phone':
+            product_name = order.phone_model.name
+        else:
+            product_name = order.product.title
+
+        subject = f'Payment Successful - Order {order.order_number}'
+
+        html_content = render_to_string('emails/payment_success.html', {
+            'customer_name': order.customer_name,
+            'order_number': order.order_number,
+            'product_name': product_name,
+            'total_amount': order.total_amount,
+        })
+
+        try:
+            email = EmailMultiAlternatives(
+                subject=subject,
+                body=f"Hello {order.customer_name}, your payment was successful!",  # fallback text
+                from_email=settings.EMAIL_HOST_USER,
+                to=[order.customer_email]
+            )
+            email.attach_alternative(html_content, "text/html")
+            email.send(fail_silently=False)
+            logger.info(f"Customer email sent to {order.customer_email}")
+        except Exception as e:
+            logger.error(f"Failed to send customer email: {str(e)}")
+
+    def send_admin_email(self, order, order_type):
+        """Send new order notification to admins with HTML template"""
+        from accounts.models import User
+
+        if order_type == 'repair':
+            product_name = f"{order.phone_model} Repair"
+        elif order_type == 'phone':
+            product_name = order.phone_model.name
+        else:
+            product_name = order.product.title
+
+        subject = f'New Order - {order.order_number}'
+
+        html_content = render_to_string('emails/new_order_admin.html', {
+            'order_type': order_type.title(),
+            'order_number': order.order_number,
+            'customer_name': order.customer_name,
+            'customer_email': order.customer_email,
+            'customer_phone': order.customer_phone,
+            'product_name': product_name,
+            'total_amount': order.total_amount,
+        })
+
+        admin_emails = User.objects.filter(role='admin').values_list('email', flat=True)
+        if admin_emails:
+            try:
+                email = EmailMultiAlternatives(
+                    subject=subject,
+                    body="New payment received.",  # fallback text
+                    from_email=settings.EMAIL_HOST_USER,
+                    to=list(admin_emails)
+                )
+                email.attach_alternative(html_content, "text/html")
+                email.send(fail_silently=False)
+                logger.info(f"Admin email sent to {len(admin_emails)} admins")
+            except Exception as e:
+                logger.error(f"Failed to send admin email: {str(e)}")
+

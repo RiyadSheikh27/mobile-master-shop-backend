@@ -150,7 +150,7 @@ class AcsOrderListSerializer(serializers.ModelSerializer):
         model = AcsOrder
         fields = [
             'id', 'order_number',
-            'customer_name', 'customer_phone',
+            'customer_name', 'shipping_address', 'city', 'postal_code', 'country', 'customer_phone',
             'product_title', 'product_image',
             'quantity', 'total_amount',
             'status', 'status_display',

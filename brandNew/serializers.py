@@ -232,7 +232,7 @@ class NewPhoneOrderListSerializer(serializers.ModelSerializer):
         model = NewPhoneOrder
         fields = [
             'id', 'order_number',
-            'customer_name', 'customer_phone',
+            'customer_name', 'shipping_address', 'postal_code', 'country', 'city', 'customer_phone',
             'phone_model_name', 'phone_model_brand', 'phone_image',
             'color_name', 'quantity',
             'total_amount',

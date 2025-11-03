@@ -170,6 +170,7 @@ class Order(models.Model):
     customer_name = models.CharField(max_length=200)
     customer_email = models.EmailField()
     customer_phone = models.CharField(max_length=20)
+    schedule = models.DateTimeField(null=True, blank=True)
     
     phone_model = models.ForeignKey(PhoneModel, on_delete=models.PROTECT, related_name='orders')
     
