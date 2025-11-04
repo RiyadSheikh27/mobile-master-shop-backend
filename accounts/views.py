@@ -439,7 +439,7 @@ class UserListView(APIView):
         users = User.objects.all().order_by('-date_joined')
         
         # paginator = MyLimitOffsetPagination()
-        page = paginator.paginate_queryset(users, request)  # only paginated queryset
+        # page = paginator.paginate_queryset(users, request)  # only paginated queryset
         serializer = UserListSerializer(page, many=True)
         
         logger.info(f"Admin {request.user.email} accessed user list. Total users: {users.count()}")
