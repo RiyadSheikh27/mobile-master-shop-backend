@@ -454,9 +454,6 @@ class UserListView(APIView):
         )
         
 #================ Webhook Implementation ================
-# ============================================
-# Add this to accounts/views.py
-# ============================================
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.http import HttpResponse
