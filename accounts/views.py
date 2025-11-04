@@ -438,7 +438,7 @@ class UserListView(APIView):
 
         users = User.objects.all().order_by('-date_joined')
         
-        paginator = MyLimitOffsetPagination()
+        # paginator = MyLimitOffsetPagination()
         page = paginator.paginate_queryset(users, request)  # only paginated queryset
         serializer = UserListSerializer(page, many=True)
         
@@ -633,21 +633,43 @@ from itertools import chain
 from operator import attrgetter
 
 class UnifiedAdminOrderListView(APIView):
+    """
+    Unified API endpoint for admins to view all orders (Phone, Accessory, Repair)
+    Requires authentication and admin role
+    GET: Returns combined list of all order types with filtering and statistics
+    
+    Query Parameters:
+    - order_type: 'phone', 'accessory', 'repair', or 'all' (default: 'all')
+    - status: Filter by order status
+    - payment_status: Filter by payment status
+    - customer_email: Filter by customer email
+    - customer_phone: Filter by customer phone number
+    - order_number: Filter by order number
+    - date_from: Filter orders from this date (YYYY-MM-DD)
+    - date_to: Filter orders until this date (YYYY-MM-DD)
+    - brand: Filter by phone brand (for phone and repair orders)
+    - city: Filter by city (for accessory orders)
+    - payment_method: Filter by payment method
+    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        # Check if user is admin
         if request.user.role != 'admin':
             return Response({
                 'success': False,
                 'message': 'Permission denied. Only admins can access all orders.'
             }, status=status.HTTP_403_FORBIDDEN)
 
+        # Get order type filter (default to 'all')
         order_type = request.query_params.get('order_type', 'all').lower()
         
+        # Initialize querysets
         phone_orders = []
         accessory_orders = []
         repair_orders = []
         
+        # ========== FETCH AND FILTER PHONE ORDERS ==========
         if order_type in ['all', 'phone']:
             phone_queryset = NewPhoneOrder.objects.select_related(
                 'user', 'phone_model__brand', 'selected_color'
@@ -655,19 +677,23 @@ class UnifiedAdminOrderListView(APIView):
             
             phone_queryset = self._apply_common_filters(phone_queryset, request)
             
+            # Phone-specific filters
             brand = request.query_params.get('brand')
             if brand:
                 phone_queryset = phone_queryset.filter(phone_model__brand__slug=brand)
             
             phone_orders = list(phone_queryset)
+            # Add order_type attribute for identification
             for order in phone_orders:
                 order.order_type = 'phone'
 
+        # ========== FETCH AND FILTER ACCESSORY ORDERS ==========
         if order_type in ['all', 'accessory']:
             accessory_queryset = AcsOrder.objects.select_related('user', 'product')
             
             accessory_queryset = self._apply_common_filters(accessory_queryset, request)
             
+            # Accessory-specific filters
             product_id = request.query_params.get('product')
             if product_id:
                 accessory_queryset = accessory_queryset.filter(product_id=product_id)
@@ -697,6 +723,7 @@ class UnifiedAdminOrderListView(APIView):
             
             repair_queryset = self._apply_common_filters(repair_queryset, request)
             
+            # Repair-specific filters
             brand = request.query_params.get('brand')
             if brand:
                 repair_queryset = repair_queryset.filter(phone_model__brand__slug=brand)
@@ -737,7 +764,7 @@ class UnifiedAdminOrderListView(APIView):
 
         return Response({
             'success': True,
-            'message': 'Combine order list retrieved successfully',
+            'message': 'Unified order list retrieved successfully',
             'filter_applied': {
                 'order_type': order_type,
             },
@@ -748,26 +775,32 @@ class UnifiedAdminOrderListView(APIView):
     def _apply_common_filters(self, queryset, request):
         """Apply filters common to all order types"""
         
+        # Filter by status
         status_param = request.query_params.get('status')
         if status_param:
             queryset = queryset.filter(status=status_param)
 
+        # Filter by payment status
         payment_status_param = request.query_params.get('payment_status')
         if payment_status_param:
             queryset = queryset.filter(payment_status=payment_status_param)
 
+        # Filter by customer email
         customer_email = request.query_params.get('customer_email')
         if customer_email:
             queryset = queryset.filter(customer_email__icontains=customer_email)
 
+        # Filter by customer phone
         customer_phone = request.query_params.get('customer_phone')
         if customer_phone:
             queryset = queryset.filter(customer_phone__icontains=customer_phone)
 
+        # Filter by order number
         order_number = request.query_params.get('order_number')
         if order_number:
             queryset = queryset.filter(order_number__icontains=order_number)
 
+        # Filter by date range
         date_from = request.query_params.get('date_from')
         if date_from:
             queryset = queryset.filter(created_at__gte=date_from)
@@ -784,22 +817,26 @@ class UnifiedAdminOrderListView(APIView):
         all_orders = phone_orders + accessory_orders + repair_orders
         total_orders = len(all_orders)
         
+        # Count by order type
         order_type_summary = {
             'phone': len(phone_orders),
             'accessory': len(accessory_orders),
             'repair': len(repair_orders)
         }
-
+        
+        # Count by status (combined)
         status_summary = {}
         for order in all_orders:
             status = order.status
             status_summary[status] = status_summary.get(status, 0) + 1
         
+        # Count by payment status (combined)
         payment_summary = {}
         for order in all_orders:
             payment_status = order.payment_status
             payment_summary[payment_status] = payment_summary.get(payment_status, 0) + 1
         
+        # Calculate revenue
         total_revenue = Decimal('0.00')
         pending_revenue = Decimal('0.00')
         
@@ -809,6 +846,7 @@ class UnifiedAdminOrderListView(APIView):
             elif order.payment_status == 'pending':
                 pending_revenue += Decimal(str(order.total_amount))
         
+        # Revenue breakdown by order type
         revenue_by_type = {
             'phone': sum(Decimal(str(o.total_amount)) for o in phone_orders if o.payment_status == 'paid'),
             'accessory': sum(Decimal(str(o.total_amount)) for o in accessory_orders if o.payment_status == 'paid'),
@@ -873,6 +911,18 @@ class UnifiedAdminOrderListView(APIView):
 
     def _serialize_repair_order(self, order):
         """Serialize repair order data"""
+        # Safely get repair items
+        try:
+            repair_items = [
+                {
+                    'problem': item.problem.name if hasattr(item, 'problem') and item.problem else None,
+                    'price': str(getattr(item, 'price', getattr(item, 'amount', '0.00')))
+                }
+                for item in order.order_items.all()
+            ]
+        except Exception:
+            repair_items = []
+        
         return {
             'id': order.id,
             'order_type': 'repair',
@@ -885,15 +935,9 @@ class UnifiedAdminOrderListView(APIView):
                 'name': order.phone_model.name,
                 'brand': order.phone_model.brand.name if order.phone_model.brand else None
             } if order.phone_model else None,
-            'repair_items': [
-                {
-                    'problem': item.problem.name if item.problem else None,
-                    'price': str(item.price)
-                }
-                for item in order.order_items.all()
-            ],
+            'repair_items': repair_items,
             'total_amount': str(order.total_amount),
-            'payment_method': order.payment_method,
+            'payment_method': getattr(order, 'payment_method', None),
             'status': order.status,
             'payment_status': order.payment_status,
             'created_at': order.created_at.isoformat(),

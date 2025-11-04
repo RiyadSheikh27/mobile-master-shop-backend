@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Max
 from django.utils.text import slugify
 from django_ckeditor_5.fields import CKEditor5Field
 from decimal import Decimal
@@ -91,6 +92,14 @@ class NewPhoneModel(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    rank = models.PositiveIntegerField(default=0)
+
+    def save(self, *args, **kwargs):
+        if self.pk is None:
+            max_rank = NewPhoneModel.objects.aggregate(Max('rank'))['rank__max'] or 0
+            self.rank = max_rank + 1
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name_plural = "New Phone Models"

@@ -17,7 +17,7 @@ class PhoneModelListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PhoneModel
-        fields = ['id', 'name', 'brand', 'brand_name', 'image', 'is_active', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'brand', 'brand_name', 'image', 'rank', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['is_active', 'created_at', 'updated_at']
         ref_name = 'ProductPhoneModelList'
 
@@ -32,7 +32,7 @@ class PhoneModelDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = PhoneModel
         fields = ['id', 'name', 'brand', 'brand_name', 'brand_logo', 'image', 
-                  'is_active', 'available_repairs_count']
+                  'is_active', 'rank', 'available_repairs_count']
         ref_name = 'ProductPhoneModelDetail'
     
     def get_available_repairs_count(self, obj):

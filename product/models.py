@@ -40,11 +40,11 @@ class PhoneModel(models.Model):
 
     rank = models.PositiveIntegerField(default=0)
 
-    # def save(self, *args, **kwargs):
-    #     if self._state.adding and not self.rank:
-    #         max_order = PhoneModel.objects.aggregate(Max('rank'))
-    #         self.rank = max_order + 1
-    #     super().save(*args, **kwargs)
+    def save(self, *args, **kwargs):
+        if self._state.adding and not self.rank:
+            max_rank = PhoneModel.objects.aggregate(Max('rank'))['rank__max'] or 0
+            self.rank = max_rank + 1
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ['-rank', '-id']
