@@ -15,7 +15,7 @@ from .serializers import *
 import stripe
 from django.conf import settings
 from django.utils import timezone
-from accounts.mypaginations import MyLimitOffsetPagination
+# from accounts.mypaginations import MyLimitOffsetPagination
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 

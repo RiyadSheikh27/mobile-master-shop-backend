@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from decimal import Decimal
 import uuid
 from django.utils.text import slugify
+from django.db.models import Max
 
 User = get_user_model()
 
@@ -37,8 +38,16 @@ class PhoneModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    rank = models.PositiveIntegerField(default=0)
+
+    # def save(self, *args, **kwargs):
+    #     if self._state.adding and not self.rank:
+    #         max_order = PhoneModel.objects.aggregate(Max('rank'))
+    #         self.rank = max_order + 1
+    #     super().save(*args, **kwargs)
+
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['-rank', '-id']
         unique_together = ['brand', 'name']
         verbose_name = 'Phone Model'
         verbose_name_plural = 'Phone Models'

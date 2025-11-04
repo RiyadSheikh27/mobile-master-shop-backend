@@ -20,7 +20,7 @@ from accessories.views import *
 from .permissions import IsAdmin, IsOwnerOrReadOnly, IsUser
 from django.db.models import Count, Sum, Q
 from decimal import Decimal
-from .mypaginations import MyLimitOffsetPagination
+# from .mypaginations import MyLimitOffsetPagination
 
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
@@ -621,3 +621,281 @@ class StripeWebhookView(APIView):
             except Exception as e:
                 logger.error(f"Failed to send admin email: {str(e)}")
 
+
+#================== Combine Order List ====================
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from django.db.models import Count, Sum, Avg, Q, Prefetch
+from decimal import Decimal
+from itertools import chain
+from operator import attrgetter
+
+class UnifiedAdminOrderListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != 'admin':
+            return Response({
+                'success': False,
+                'message': 'Permission denied. Only admins can access all orders.'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        order_type = request.query_params.get('order_type', 'all').lower()
+        
+        phone_orders = []
+        accessory_orders = []
+        repair_orders = []
+        
+        if order_type in ['all', 'phone']:
+            phone_queryset = NewPhoneOrder.objects.select_related(
+                'user', 'phone_model__brand', 'selected_color'
+            ).prefetch_related('phone_model__colors')
+            
+            phone_queryset = self._apply_common_filters(phone_queryset, request)
+            
+            brand = request.query_params.get('brand')
+            if brand:
+                phone_queryset = phone_queryset.filter(phone_model__brand__slug=brand)
+            
+            phone_orders = list(phone_queryset)
+            for order in phone_orders:
+                order.order_type = 'phone'
+
+        if order_type in ['all', 'accessory']:
+            accessory_queryset = AcsOrder.objects.select_related('user', 'product')
+            
+            accessory_queryset = self._apply_common_filters(accessory_queryset, request)
+            
+            product_id = request.query_params.get('product')
+            if product_id:
+                accessory_queryset = accessory_queryset.filter(product_id=product_id)
+            
+            city = request.query_params.get('city')
+            if city:
+                accessory_queryset = accessory_queryset.filter(city__icontains=city)
+            
+            country = request.query_params.get('country')
+            if country:
+                accessory_queryset = accessory_queryset.filter(country__icontains=country)
+            
+            accessory_orders = list(accessory_queryset)
+            for order in accessory_orders:
+                order.order_type = 'accessory'
+
+        # ========== FETCH AND FILTER REPAIR ORDERS ==========
+        if order_type in ['all', 'repair']:
+            repair_queryset = Order.objects.select_related(
+                'user', 'phone_model__brand'
+            ).prefetch_related(
+                Prefetch(
+                    'order_items',
+                    queryset=OrderItem.objects.select_related('problem')
+                )
+            )
+            
+            repair_queryset = self._apply_common_filters(repair_queryset, request)
+            
+            brand = request.query_params.get('brand')
+            if brand:
+                repair_queryset = repair_queryset.filter(phone_model__brand__slug=brand)
+            
+            phone_model = request.query_params.get('phone_model')
+            if phone_model:
+                repair_queryset = repair_queryset.filter(phone_model_id=phone_model)
+            
+            payment_method = request.query_params.get('payment_method')
+            if payment_method:
+                repair_queryset = repair_queryset.filter(payment_method=payment_method)
+            
+            repair_orders = list(repair_queryset)
+            for order in repair_orders:
+                order.order_type = 'repair'
+
+        # ========== COMBINE AND SORT ALL ORDERS ==========
+        combined_orders = sorted(
+            chain(phone_orders, accessory_orders, repair_orders),
+            key=attrgetter('created_at'),
+            reverse=True
+        )
+
+        # ========== CALCULATE COMBINED STATISTICS ==========
+        statistics = self._calculate_statistics(
+            phone_orders, accessory_orders, repair_orders
+        )
+
+        # ========== SERIALIZE ORDERS ==========
+        serialized_data = []
+        for order in combined_orders:
+            if order.order_type == 'phone':
+                serialized_data.append(self._serialize_phone_order(order))
+            elif order.order_type == 'accessory':
+                serialized_data.append(self._serialize_accessory_order(order))
+            elif order.order_type == 'repair':
+                serialized_data.append(self._serialize_repair_order(order))
+
+        return Response({
+            'success': True,
+            'message': 'Combine order list retrieved successfully',
+            'filter_applied': {
+                'order_type': order_type,
+            },
+            'statistics': statistics,
+            'data': serialized_data
+        }, status=status.HTTP_200_OK)
+
+    def _apply_common_filters(self, queryset, request):
+        """Apply filters common to all order types"""
+        
+        status_param = request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+
+        payment_status_param = request.query_params.get('payment_status')
+        if payment_status_param:
+            queryset = queryset.filter(payment_status=payment_status_param)
+
+        customer_email = request.query_params.get('customer_email')
+        if customer_email:
+            queryset = queryset.filter(customer_email__icontains=customer_email)
+
+        customer_phone = request.query_params.get('customer_phone')
+        if customer_phone:
+            queryset = queryset.filter(customer_phone__icontains=customer_phone)
+
+        order_number = request.query_params.get('order_number')
+        if order_number:
+            queryset = queryset.filter(order_number__icontains=order_number)
+
+        date_from = request.query_params.get('date_from')
+        if date_from:
+            queryset = queryset.filter(created_at__gte=date_from)
+
+        date_to = request.query_params.get('date_to')
+        if date_to:
+            queryset = queryset.filter(created_at__lte=date_to)
+
+        return queryset
+
+    def _calculate_statistics(self, phone_orders, accessory_orders, repair_orders):
+        """Calculate combined statistics for all order types"""
+        
+        all_orders = phone_orders + accessory_orders + repair_orders
+        total_orders = len(all_orders)
+        
+        order_type_summary = {
+            'phone': len(phone_orders),
+            'accessory': len(accessory_orders),
+            'repair': len(repair_orders)
+        }
+
+        status_summary = {}
+        for order in all_orders:
+            status = order.status
+            status_summary[status] = status_summary.get(status, 0) + 1
+        
+        payment_summary = {}
+        for order in all_orders:
+            payment_status = order.payment_status
+            payment_summary[payment_status] = payment_summary.get(payment_status, 0) + 1
+        
+        total_revenue = Decimal('0.00')
+        pending_revenue = Decimal('0.00')
+        
+        for order in all_orders:
+            if order.payment_status == 'paid':
+                total_revenue += Decimal(str(order.total_amount))
+            elif order.payment_status == 'pending':
+                pending_revenue += Decimal(str(order.total_amount))
+        
+        revenue_by_type = {
+            'phone': sum(Decimal(str(o.total_amount)) for o in phone_orders if o.payment_status == 'paid'),
+            'accessory': sum(Decimal(str(o.total_amount)) for o in accessory_orders if o.payment_status == 'paid'),
+            'repair': sum(Decimal(str(o.total_amount)) for o in repair_orders if o.payment_status == 'paid')
+        }
+        
+        return {
+            'total_orders': total_orders,
+            'order_type_summary': order_type_summary,
+            'status_summary': status_summary,
+            'payment_summary': payment_summary,
+            'total_revenue': str(total_revenue),
+            'pending_revenue': str(pending_revenue),
+            'revenue_by_type': {k: str(v) for k, v in revenue_by_type.items()}
+        }
+
+    def _serialize_phone_order(self, order):
+        """Serialize phone order data"""
+        return {
+            'id': order.id,
+            'order_type': 'phone',
+            'order_number': order.order_number,
+            'customer_name': order.customer_name,
+            'customer_email': order.customer_email,
+            'customer_phone': order.customer_phone,
+            'phone_model': {
+                'id': order.phone_model.id,
+                'name': order.phone_model.name,
+                'brand': order.phone_model.brand.name if order.phone_model.brand else None
+            },
+            'selected_color': order.selected_color.name if order.selected_color else None,
+            'quantity': order.quantity,
+            'total_amount': str(order.total_amount),
+            'status': order.status,
+            'payment_status': order.payment_status,
+            'created_at': order.created_at.isoformat(),
+            'updated_at': order.updated_at.isoformat()
+        }
+
+    def _serialize_accessory_order(self, order):
+        """Serialize accessory order data"""
+        return {
+            'id': order.id,
+            'order_type': 'accessory',
+            'order_number': order.order_number,
+            'customer_name': order.customer_name,
+            'customer_email': order.customer_email,
+            'customer_phone': order.customer_phone,
+            'product': {
+                'id': order.product.id,
+                'title': order.product.title
+            } if order.product else None,
+            'quantity': order.quantity,
+            'total_amount': str(order.total_amount),
+            'city': order.city,
+            'country': order.country,
+            'status': order.status,
+            'payment_status': order.payment_status,
+            'created_at': order.created_at.isoformat(),
+            'updated_at': order.updated_at.isoformat()
+        }
+
+    def _serialize_repair_order(self, order):
+        """Serialize repair order data"""
+        return {
+            'id': order.id,
+            'order_type': 'repair',
+            'order_number': order.order_number,
+            'customer_name': order.customer_name,
+            'customer_email': order.customer_email,
+            'customer_phone': order.customer_phone,
+            'phone_model': {
+                'id': order.phone_model.id,
+                'name': order.phone_model.name,
+                'brand': order.phone_model.brand.name if order.phone_model.brand else None
+            } if order.phone_model else None,
+            'repair_items': [
+                {
+                    'problem': item.problem.name if item.problem else None,
+                    'price': str(item.price)
+                }
+                for item in order.order_items.all()
+            ],
+            'total_amount': str(order.total_amount),
+            'payment_method': order.payment_method,
+            'status': order.status,
+            'payment_status': order.payment_status,
+            'created_at': order.created_at.isoformat(),
+            'updated_at': order.updated_at.isoformat()
+        }

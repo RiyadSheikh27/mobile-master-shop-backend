@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from product.views import *
 from brandNew.views import *
 from accessories.views import *
+from accounts.views import *
 
 router = DefaultRouter()
 router.register(r'repair/brands', PhoneBrandViewSet, basename='phonebrand')
@@ -30,4 +31,5 @@ urlpatterns = [
     path('brandnew/admin/orders/', AdminOrderListView.as_view(), name='admin-order-list'),
     path('repair/admin/orders/', AdminRepairOrderListView.as_view(), name='admin-repair-order-list'),
     path('accessories/admin/orders/', AdminAcsOrderListView.as_view(), name='admin-acs-order-list'),
+    path('admin/orders/', UnifiedAdminOrderListView.as_view(), name='unified-admin-orders'),
 ]

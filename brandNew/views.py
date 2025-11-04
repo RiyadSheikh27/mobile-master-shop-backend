@@ -11,7 +11,7 @@ from accounts.permissions import IsAdmin, IsUser, IsOwnerOrReadOnly
 import stripe
 from django.conf import settings
 from django.utils import timezone
-from accounts.mypaginations import MyLimitOffsetPagination
+# from accounts.mypaginations import MyLimitOffsetPagination
 
 # Initialize Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -200,7 +200,6 @@ class WebsiteDiscountViewSet(viewsets.ModelViewSet):
 
 # ==================== ORDER VIEWSET ====================
 class NewPhoneOrderViewSet(viewsets.ModelViewSet):
-    
     def get_permissions(self):
         if self.action == 'create':
             return [AllowAny()]
@@ -222,7 +221,6 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             'user', 'phone_model__brand', 'selected_color'
         ).prefetch_related('phone_model__colors')
 
-        # Non-admin users see only their orders
         if self.request.user.is_authenticated and not hasattr(self.request.user, 'is_admin'):
             queryset = queryset.filter(
                 Q(user=self.request.user) | 
@@ -714,4 +712,4 @@ class AdminOrderListView(APIView):
             },
             'data': serializer.data
         }, status=status.HTTP_200_OK)
-# ========== END NEW VIEWSET ==========
+# ========== END VIEWSET ==========

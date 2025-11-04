@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'brandNew',
     'accessories',
 ]
+
 SWAGGER_SETTINGS = {
     'DEFAULT_MODEL_NAME_FUNCTION': lambda serializer: f"{serializer.__module__}.{serializer.__class__.__name__}"
 }
@@ -65,8 +66,6 @@ SWAGGER_SETTINGS = {
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_51SKt7eIzTYoXma53pXJrtFefi7TbAsipJlUegWZvYf6bFFGaSfhDHCVuVElU5kgVhKAQzu8a2sIWZnSPwkPbtg2d00DJWaL2Mx')
 STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', 'pk_test_51SKt7eIzTYoXma53SGBAyxwQuu3rWCWKF1b73aSuCmAdePLZTJHybIrnNNLqaeLNkqDyuURchGShP1Nd3iwIt0TH008bzQlKpY')
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', 'whsec_Zat2M8K5NRnBUT1IOWVAyVAsQr7yK9Ga')
-
-# STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', 'your_webhook_secret')
 
 CKEDITOR_5_UPLOAD_PATH = "uploads/"
 CKEDITOR_5_CONFIGS = {
@@ -170,38 +169,17 @@ ALLOWED_HOSTS = [
     'lumivancelabs.com',
     '*.lumivancelabs.com',
     '127.0.0.1',
+    'localhost',
 ]
 
+# 2. Fix CORS settings
 CORS_ALLOWED_ORIGINS = [
     "https://mobile-shop-repair.vercel.app",
     "http://localhost:3000",
     "http://localhost:5173",
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-    'https://mobile-shop-repair.vercel.app',
-    'https://save-co.lumivancelabs.com',
-    'https://www.save-co.lumivancelabs.com',
-]
-
-CSRF_USE_SESSIONS = False
-CSRF_COOKIE_SAMESITE = 'None' 
-CSRF_COOKIE_SECURE = True
-
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = 'None'
-SESSION_COOKIE_SECURE = True
-
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = False
-
-CSRF_COOKIE_DOMAIN = None
-
-CORS_ALLOW_ALL_ORIGINS = False 
-
-CORS_ALLOW_CREDENTIALS = True
-
-CSRF_COOKIE_HTTPONLY = False
+CORS_ALLOW_CREDENTIALS = True  # Important for CSRF cookies
 
 CORS_ALLOW_METHODS = [
     'DELETE',
@@ -224,27 +202,42 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-    'https://mobile-shop-repair.vercel.app',
-    'https://save-co.lumivancelabs.com',
-    'https://www.save-co.lumivancelabs.com',
-]
-
 CORS_EXPOSE_HEADERS = [
     'Content-Type',
     'X-CSRFToken',
 ]
 
-SESSION_COOKIE_SECURE = True
-SESSION_COOKIE_SAMESITE = 'None'
-SESSION_COOKIE_HTTPONLY = True
+CSRF_TRUSTED_ORIGINS = [
+    'https://mobile-shop-repair.vercel.app',
+    'https://save-co.lumivancelabs.com',
+    'http://save-co.lumivancelabs.com',
+    'https://www.save-co.lumivancelabs.com',
+]
 
-CSRF_COOKIE_SECURE = True
-CSRF_COOKIE_SAMESITE = 'None'
+# Fix: Should be domain only, not URL
+# CSRF_COOKIE_DOMAIN = '.lumivancelabs.com'  # Leading dot allows subdomains
 
+# # Fix: Cookie settings for cPanel
+# CSRF_COOKIE_SAMESITE = 'None'  # Changed from 'Lax' for cross-origin
+# CSRF_COOKIE_HTTPONLY = False
+# CSRF_COOKIE_SECURE = True  # Only if you have HTTPS configured
+# CSRF_USE_SESSIONS = False
+# CSRF_COOKIE_NAME = 'csrftoken'  # Explicit name
+
+# Session cookie settings
+# SESSION_COOKIE_SAMESITE = 'None'  # Changed from 'Lax' for cross-origin
+# SESSION_COOKIE_HTTPONLY = True
+# SESSION_COOKIE_SECURE = True  # Only if you have HTTPS configured
+# SESSION_COOKIE_DOMAIN = '.lumivancelabs.com'
+
+# 4. Security headers
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = False
+SECURE_SSL_REDIRECT = False  # Let cPanel/Apache handle this
 
+CORS_EXPOSE_HEADERS = [
+    'Content-Type',
+    'X-CSRFToken',
+]
 
 
 
@@ -319,6 +312,17 @@ DATABASES = {
 # }
 
 
+# DATABASES = {
+#     'default': {
+#         'NAME': 'lumivanc_saveco',
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'USER': 'lumivanc_saveco',
+#         'PASSWORD': 'saveco@123',
+#         'OPTIONS': {
+#           'autocommit': True,
+#         },
+#     }
+# }
 
 # DATABASES = {
 #     'default': {
@@ -332,14 +336,6 @@ DATABASES = {
 # }
 
 
-# CORS_ALLOWED_ORIGINS = [
-#        "http://localhost:3000",
-#        "http://localhost:5173",
-#    ]
-
-
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
     {
