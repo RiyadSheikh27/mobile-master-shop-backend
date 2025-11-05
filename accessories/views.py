@@ -153,12 +153,11 @@ class AcsWebsiteDiscountViewSet(viewsets.ModelViewSet):
 
 # ==================== ORDER VIEWSET ====================
 class AcsOrderViewSet(viewsets.ModelViewSet):
-    
     def get_permissions(self):
         if self.action == 'create':
             return [IsAuthenticated()]
         elif self.action in ['update', 'partial_update', 'destroy']:
-            return [IsOwnerOrReadOnly()]
+            return [IsAdmin()]
         return [IsAuthenticated()]
 
     def get_serializer_class(self):
@@ -173,22 +172,29 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = AcsOrder.objects.select_related('user', 'product')
 
-        # Non-admin users see only their orders
-        if self.request.user.is_authenticated and not hasattr(self.request.user, 'is_admin'):
-            queryset = queryset.filter(
-                Q(user=self.request.user) | 
-                Q(customer_email=self.request.user.email)
-            )
+        if self.request.user.is_authenticated:
+            if hasattr(self.request.user, 'role') and self.request.user.role == 'admin':
+                # Admin sees all orders - no filtering
+                pass
+            else:
+                # Regular user - filter to their orders only
+                queryset = queryset.filter(
+                    Q(user=self.request.user) | 
+                    Q(customer_email=self.request.user.email)
+                )
             
+        # Filter by status if provided
         status_param = self.request.query_params.get('status')
         if status_param:
             queryset = queryset.filter(status=status_param)
 
+        # Filter by payment status if provided
         payment_status_param = self.request.query_params.get('payment_status')
         if payment_status_param:
             queryset = queryset.filter(payment_status=payment_status_param)
 
         return queryset.order_by('-created_at')
+
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -207,6 +213,25 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
             'message': 'Order details retrieved successfully',
             'data': serializer.data
         }, status=status.HTTP_200_OK)
+    
+    def destroy(self, request, *args, **kwargs):
+        order = self.get_object()
+        
+        serializer = self.get_serializer(order)
+        order_data = serializer.data
+        
+
+        order_number = order.order_number
+        order_id = order.id
+        
+        with transaction.atomic():
+            order.delete()
+        
+        return Response({
+            'success': True,
+            'message': f'Order {order_number} deleted successfully',
+        }, status=status.HTTP_200_OK)
+
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):

@@ -20,7 +20,7 @@ from accessories.views import *
 from .permissions import IsAdmin, IsOwnerOrReadOnly, IsUser
 from django.db.models import Count, Sum, Q
 from decimal import Decimal
-# from .mypaginations import MyLimitOffsetPagination
+from .mypaginations import MyLimitOffsetPagination
 
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
@@ -418,7 +418,8 @@ class OAuthLoginView(APIView):
                 {"error": f"An error occurred during login: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-            
+
+#============= Total User list =========== 
 class UserListView(APIView):
     """
     API endpoint for admins to view all registered users.
@@ -426,7 +427,7 @@ class UserListView(APIView):
     GET: Returns list of all users with their details
     """
     permission_classes = [IsAuthenticated]
-    # pagination_class = MyLimitOffsetPagination
+    pagination_class = MyLimitOffsetPagination
 
     def get(self, request):
         if request.user.role != 'admin':
@@ -438,8 +439,8 @@ class UserListView(APIView):
 
         users = User.objects.all().order_by('-date_joined')
         
-        # paginator = MyLimitOffsetPagination()
-        # page = paginator.paginate_queryset(users, request)  # only paginated queryset
+        paginator = MyLimitOffsetPagination()
+        page = paginator.paginate_queryset(users, request)  
         serializer = UserListSerializer(page, many=True)
         
         logger.info(f"Admin {request.user.email} accessed user list. Total users: {users.count()}")
@@ -487,7 +488,6 @@ class StripeWebhookView(APIView):
         except stripe.error.SignatureVerificationError:
             return HttpResponse(status=400)
 
-        # Handle successful payment
         if event['type'] == 'payment_intent.succeeded':
             payment_intent = event['data']['object']
             self.handle_payment_success(payment_intent)
@@ -628,6 +628,15 @@ from django.db.models import Count, Sum, Avg, Q, Prefetch
 from decimal import Decimal
 from itertools import chain
 from operator import attrgetter
+from rest_framework.pagination import PageNumberPagination
+
+class StandardResultsPagination(PageNumberPagination):
+    """
+    Standard pagination with page numbers
+    """
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 class UnifiedAdminOrderListView(APIView):
     """
@@ -636,6 +645,8 @@ class UnifiedAdminOrderListView(APIView):
     GET: Returns combined list of all order types with filtering and statistics
     
     Query Parameters:
+    - page: Page number (default: 1)
+    - page_size: Number of items per page (default: 20, max: 100)
     - order_type: 'phone', 'accessory', 'repair', or 'all' (default: 'all')
     - status: Filter by order status
     - payment_status: Filter by payment status
@@ -649,6 +660,7 @@ class UnifiedAdminOrderListView(APIView):
     - payment_method: Filter by payment method
     """
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsPagination
 
     def get(self, request):
         # Check if user is admin
@@ -759,14 +771,26 @@ class UnifiedAdminOrderListView(APIView):
             elif order.order_type == 'repair':
                 serialized_data.append(self._serialize_repair_order(order))
 
+        # ========== APPLY PAGINATION ==========
+        paginator = self.pagination_class()
+        paginated_data = paginator.paginate_queryset(serialized_data, request)
+
         return Response({
             'success': True,
             'message': 'Unified order list retrieved successfully',
             'filter_applied': {
                 'order_type': order_type,
             },
+            'pagination': {
+                'count': len(serialized_data),
+                'next': paginator.get_next_link(),
+                'previous': paginator.get_previous_link(),
+                'current_page': request.query_params.get('page', 1),
+                'page_size': paginator.page_size,
+                'total_pages': (len(serialized_data) + paginator.page_size - 1) // paginator.page_size
+            },
             'statistics': statistics,
-            'data': serialized_data
+            'data': paginated_data
         }, status=status.HTTP_200_OK)
 
     def _apply_common_filters(self, queryset, request):
@@ -826,6 +850,7 @@ class UnifiedAdminOrderListView(APIView):
         for order in all_orders:
             status = order.status
             status_summary[status] = status_summary.get(status, 0) + 1
+
         
         # Count by payment status (combined)
         payment_summary = {}
@@ -834,14 +859,22 @@ class UnifiedAdminOrderListView(APIView):
             payment_summary[payment_status] = payment_summary.get(payment_status, 0) + 1
         
         # Calculate revenue
+        unread_count = 0
         total_revenue = Decimal('0.00')
         pending_revenue = Decimal('0.00')
         
+        # Calculate revenue
         for order in all_orders:
             if order.payment_status == 'paid':
                 total_revenue += Decimal(str(order.total_amount))
             elif order.payment_status == 'pending':
                 pending_revenue += Decimal(str(order.total_amount))
+        
+        # Count unread orders
+        for order in all_orders:
+            if not order.is_read:  # since it's a boolean
+                unread_count += 1
+        
         
         # Revenue breakdown by order type
         revenue_by_type = {
@@ -857,7 +890,8 @@ class UnifiedAdminOrderListView(APIView):
             'payment_summary': payment_summary,
             'total_revenue': str(total_revenue),
             'pending_revenue': str(pending_revenue),
-            'revenue_by_type': {k: str(v) for k, v in revenue_by_type.items()}
+            'revenue_by_type': {k: str(v) for k, v in revenue_by_type.items()},
+            'unread_count': unread_count,  # keep as integer
         }
 
     def _serialize_phone_order(self, order):
@@ -879,6 +913,7 @@ class UnifiedAdminOrderListView(APIView):
             'total_amount': str(order.total_amount),
             'status': order.status,
             'payment_status': order.payment_status,
+            'is_read': order.is_read,
             'created_at': order.created_at.isoformat(),
             'updated_at': order.updated_at.isoformat()
         }
@@ -902,6 +937,7 @@ class UnifiedAdminOrderListView(APIView):
             'country': order.country,
             'status': order.status,
             'payment_status': order.payment_status,
+            'is_read': order.is_read,
             'created_at': order.created_at.isoformat(),
             'updated_at': order.updated_at.isoformat()
         }
@@ -937,6 +973,80 @@ class UnifiedAdminOrderListView(APIView):
             'payment_method': getattr(order, 'payment_method', None),
             'status': order.status,
             'payment_status': order.payment_status,
+            'is_read': order.is_read,
             'created_at': order.created_at.isoformat(),
             'updated_at': order.updated_at.isoformat()
         }
+    
+
+#================ Contact List ==============
+class ContactViewSet(viewsets.ModelViewSet):
+    """
+    A ViewSet for handling contact messages.
+    """
+    queryset = Contact.objects.all().order_by('-created_at')
+    serializer_class = ContactSerializer
+    permission_classes = [AllowAny]
+
+    def list(self, request, *args, **kwargs):
+        """Get all contact messages"""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            "success": True,
+            "message": "All contact messages fetched successfully.",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Get a specific contact message"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response({
+            "success": True,
+            "message": "Contact message details fetched successfully.",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    def create(self, request, *args, **kwargs):
+        """Submit a new contact message"""
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "success": True,
+                "message": "Your message has been sent successfully.",
+                "data": serializer.data
+            }, status=status.HTTP_201_CREATED)
+        return Response({
+            "success": False,
+            "message": "Failed to send message.",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        """Update a contact message"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "success": True,
+                "message": "Contact message updated successfully.",
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
+        return Response({
+            "success": False,
+            "message": "Failed to update message.",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete a contact message"""
+        instance = self.get_object()
+        instance.delete()
+        return Response({
+            "success": True,
+            "message": "Contact message deleted successfully."
+        }, status=status.HTTP_204_NO_CONTENT)

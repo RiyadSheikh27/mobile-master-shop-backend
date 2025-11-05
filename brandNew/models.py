@@ -95,15 +95,9 @@ class NewPhoneModel(models.Model):
 
     rank = models.PositiveIntegerField(default=0)
 
-    def save(self, *args, **kwargs):
-        if self.pk is None:
-            max_rank = NewPhoneModel.objects.aggregate(Max('rank'))['rank__max'] or 0
-            self.rank = max_rank + 1
-        super().save(*args, **kwargs)
-
     class Meta:
         verbose_name_plural = "New Phone Models"
-        ordering = ['-created_at']
+        ordering = ['-rank', '-id']
         unique_together = ['brand', 'name']
 
     def __str__(self):
@@ -130,6 +124,10 @@ class NewPhoneModel(models.Model):
         return self.stock_quantity > 0
     
     def save(self, *args, **kwargs):
+        if self.rank == 0:
+            max_rank = NewPhoneModel.objects.filter(brand=self.brand).aggregate(Max('rank'))['rank__max'] or 0
+            self.rank = max_rank + 1
+
         if not self.slug:
             base_slug = slugify(f"{self.brand.name} {self.name}")
             slug = base_slug
@@ -138,6 +136,7 @@ class NewPhoneModel(models.Model):
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
+    
         super().save(*args, **kwargs)
 
 
@@ -268,6 +267,7 @@ class NewPhoneOrder(models.Model):
     # Notes
     notes = models.TextField(blank=True, help_text="Customer notes")
     admin_notes = models.TextField(blank=True, help_text="Internal admin notes")
+    is_read = models.BooleanField(default=False, null=True, blank=True)
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

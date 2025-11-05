@@ -224,6 +224,7 @@ class Order(models.Model):
     
     notes = models.TextField(blank=True, help_text="Customer notes or special instructions")
     admin_notes = models.TextField(blank=True, help_text="Internal notes for staff")
+    is_read = models.BooleanField(default=False, null=True, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

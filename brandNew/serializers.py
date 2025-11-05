@@ -210,7 +210,7 @@ class NewPhoneOrderSerializer(serializers.ModelSerializer):
             'status', 'status_display',
             'payment_status', 'payment_status_display',
             'stripe_payment_intent_id',
-            'notes', 'admin_notes',
+            'notes', 'admin_notes', 'is_read',
             'created_at', 'updated_at', 'confirmed_at', 'shipped_at', 'delivered_at'
         ]
         read_only_fields = [
@@ -236,7 +236,7 @@ class NewPhoneOrderListSerializer(serializers.ModelSerializer):
             'phone_model_name', 'phone_model_brand', 'phone_image',
             'color_name', 'quantity',
             'total_amount',
-            'status', 'status_display',
+            'status', 'status_display', 'is_read',
             'payment_status', 'payment_status_display',
             'created_at'
         ]
@@ -245,7 +245,7 @@ class NewPhoneOrderListSerializer(serializers.ModelSerializer):
 class NewPhoneOrderUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = NewPhoneOrder
-        fields = ['status', 'admin_notes']
+        fields = ['status', 'admin_notes', 'is_read']
 
 
 # ========== NEW SERIALIZER FOR ADMIN ORDER LIST ==========

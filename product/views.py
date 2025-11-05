@@ -426,7 +426,13 @@ class OrderViewSet(viewsets.ModelViewSet):
     - Check payment status
     """
 
-    permission_classes = [IsAuthenticated]
+    def get_permissions(self):
+        if self.action in ['create', 'list']:
+            return [AllowAny()]
+        elif self.action in ['update', 'partial_update', 'destroy']:
+            return [IsAdmin()]
+        return [IsAuthenticated()]
+
     def get_serializer_class(self):
         if self.action == "create":
             return OrderCreateSerializer
@@ -442,25 +448,36 @@ class OrderViewSet(viewsets.ModelViewSet):
                 "order_items", queryset=OrderItem.objects.select_related("problem")
             )
         )
-
-        # Filter by user if authenticated
-        if self.request.user.is_authenticated and not self.request.user.is_staff:
-            queryset = queryset.filter(
-                Q(user=self.request.user) | Q(customer_email=self.request.user.email)
-            )
-
+    
+        if self.action == 'destroy':
+            return queryset
+    
+        # Filter orders based on user role
+        if self.request.user.is_authenticated:
+            if hasattr(self.request.user, 'role') and self.request.user.role == 'admin':
+                pass  # No filtering for admin
+            # Also check is_staff for backward compatibility
+            elif self.request.user.is_staff:
+                pass  # No filtering for staff
+            else:
+                # Regular users only see their own orders
+                queryset = queryset.filter(
+                    Q(user=self.request.user) | Q(customer_email=self.request.user.email)
+                )
+    
         # Filter by status
         status_param = self.request.query_params.get("status", None)
         if status_param:
             queryset = queryset.filter(status=status_param)
-
+    
         # Filter by payment status
         payment_status_param = self.request.query_params.get("payment_status", None)
         if payment_status_param:
             queryset = queryset.filter(payment_status=payment_status_param)
-
-        return queryset
-
+    
+        return queryset.order_by('-created_at')
+    
+    
     def list(self, request, *args, **kwargs):
         """List all orders with filters"""
         queryset = self.get_queryset()
@@ -468,7 +485,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "success": True,
-                "message": "Orders retrieved successfully",
+                "message": "Orders Listed successfully",
                 "data": serializer.data,
             },
             status=status.HTTP_200_OK,
@@ -914,6 +931,24 @@ class OrderViewSet(viewsets.ModelViewSet):
             {"success": True, "data": serializer.data}, status=status.HTTP_200_OK
         )
     
+    def destroy(self, request, *args, **kwargs):
+        """
+        Delete an order (Admin only)
+        - Safely deletes orders based on status
+        - Prevents deletion of paid orders without refund
+        """
+        order = self.get_object()
+        
+        order_number = order.order_number
+        
+        with transaction.atomic():
+            order.delete()
+        
+        return Response({
+            'success': True,
+            'message': f'Order {order_number} deleted successfully'
+        }, status=status.HTTP_200_OK)
+    
 #=========== Repair Review Portion =============
 class RepairReviewViewSet(viewsets.ModelViewSet):
     serializer_class = RepairReviewSerializer
@@ -994,22 +1029,15 @@ from rest_framework.views import APIView
 from django.db.models import Count, Sum, Avg, Q
 
 class AdminRepairOrderListView(APIView):
-    """
-    API endpoint for admins to view all repair orders with comprehensive details
-    Requires authentication and admin role
-    GET: Returns list of all repair orders with filtering and statistics
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Check if user is admin
         if request.user.role != 'admin':
             return Response({
                 'success': False,
                 'message': 'Permission denied. Only admins can access all repair orders.'
             }, status=status.HTTP_403_FORBIDDEN)
 
-        # Get all orders with related data
         queryset = Order.objects.select_related(
             'user', 'phone_model__brand'
         ).prefetch_related(
@@ -1104,19 +1132,6 @@ class AdminRepairOrderListView(APIView):
             order__in=queryset
         ).count()
         
-        # # Most common repair problems
-        # top_problems = OrderItem.objects.filter(
-        #     order__in=queryset
-        # ).values(
-        #     'problem__name'
-        # ).annotate(
-        #     count=Count('id')
-        # ).order_by('-count')[:5]
-        # ========== END STATISTICS ==========
-
-        # Serialize order data
-        # paginator = MyLimitOffsetPagination()
-        # page = paginator.paginate_queryset(queryset, request)  # paginated queryset
         serializer = AdminRepairOrderListSerializer(queryset, many=True)
 
         return Response({

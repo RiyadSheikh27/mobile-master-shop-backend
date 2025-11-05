@@ -199,6 +199,7 @@ class AcsOrder(models.Model):
     # Notes
     notes = models.TextField(blank=True, help_text="Customer notes")
     admin_notes = models.TextField(blank=True, help_text="Internal admin notes")
+    is_read = models.BooleanField(default=False, null=True, blank=True)
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

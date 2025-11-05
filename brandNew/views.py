@@ -221,12 +221,14 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             'user', 'phone_model__brand', 'selected_color'
         ).prefetch_related('phone_model__colors')
 
-        if self.request.user.is_authenticated and not hasattr(self.request.user, 'is_admin'):
-            queryset = queryset.filter(
-                Q(user=self.request.user) | 
-                Q(customer_email=self.request.user.email)
-            )
-            
+        if self.request.user.is_authenticated:
+            if hasattr(self.request.user, 'role') and self.request.user.role == 'admin':
+                pass
+            else:
+                queryset = queryset.filter(
+                    Q(user=self.request.user) | 
+                    Q(customer_email=self.request.user.email)
+                )
         status_param = self.request.query_params.get('status')
         if status_param:
             queryset = queryset.filter(status=status_param)
@@ -253,6 +255,64 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             'success': True,
             'message': 'Order details retrieved successfully',
             'data': serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        Delete an order (Admin only)
+        - Returns deleted order details in response
+        - Prevents deletion of paid orders without refund
+        """
+        order = self.get_object()
+        
+        # Serialize order data before deletion
+        serializer = self.get_serializer(order)
+        order_data = serializer.data
+
+        
+        order_number = order.order_number
+        order_id = order.id
+        
+        # Delete the order
+        with transaction.atomic():
+            order.delete()
+        
+        return Response({
+            'success': True,
+            'message': f'Order {order_number} deleted successfully',
+        }, status=status.HTTP_200_OK)
+    
+    def destroy(self, request, *args, **kwargs):
+
+        order = self.get_object()
+        
+        # Serialize order data before deletion
+        serializer = self.get_serializer(order)
+        order_data = serializer.data
+        
+        # Safety check: Don't delete paid orders without refund
+        if order.payment_status == 'paid':
+            return Response({
+                'success': False,
+                'message': 'Cannot delete paid order. Please cancel the order first to process refund.',
+                'data': order_data
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        order_number = order.order_number
+        order_id = order.id
+        
+        # Delete the order
+        with transaction.atomic():
+            order.delete()
+        
+        return Response({
+            'success': True,
+            'message': f'Order {order_number} deleted successfully',
+            'data': {
+                'deleted_order_id': order_id,
+                'deleted_order_number': order_number,
+                'order_details': order_data
+            }
         }, status=status.HTTP_200_OK)
 
     @transaction.atomic

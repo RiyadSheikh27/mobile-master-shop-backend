@@ -22,7 +22,6 @@ class PhoneModelListSerializer(serializers.ModelSerializer):
         ref_name = 'ProductPhoneModelList'
 
 
-
 class PhoneModelDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for phone model with available repairs"""
     brand_name = serializers.CharField(source='brand.name', read_only=True)
@@ -174,7 +173,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'subtotal', 'item_discount', 'website_discount_percentage', 
             'website_discount_amount', 'total_amount', 'total_discount',
             'status', 'status_display', 'payment_status', 'payment_status_display',
-            'notes', 'admin_notes', 'order_items', 'created_at', 'updated_at',
+            'notes', 'admin_notes', 'is_read', 'order_items', 'created_at', 'updated_at',
             'confirmed_at', 'completed_at'
         ]
         read_only_fields = [
@@ -195,7 +194,7 @@ class OrderListSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'id', 'order_number', 'customer_name', 'customer_phone', 'schedule',
-            'phone_model_name', 'brand_name', 'total_amount', 'status',
+            'phone_model_name', 'brand_name', 'total_amount', 'status', 'is_read',
             'status_display', 'payment_status', 'payment_status_display',
             'items_count', 'created_at'
         ]

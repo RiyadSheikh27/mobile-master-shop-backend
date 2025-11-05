@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User
+from .models import *
 import re
 from django.contrib.auth.password_validation import validate_password
 
@@ -28,13 +28,7 @@ class SetCredentialsSerializer(serializers.Serializer):
         - Only lowercase letters, numbers, _, @
         - No spaces
         """
-        # if len(value) < 6:
-        #     raise serializers.ValidationError("Username must be at least 6 characters long.")
 
-        # if not re.match(r'^[a-z0-9_@.]+$', value):
-        #     raise serializers.ValidationError(
-        #         "Username can contain only lowercase letters, numbers, '_', '.' and '@'. No spaces allowed."
-        #     )
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError("Username already taken.")
 
@@ -77,3 +71,9 @@ class UserListSerializer(serializers.ModelSerializer):
             'date_joined',
         ]
         read_only_fields = fields
+
+class ContactSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Contact
+        fields = ['id', 'name', 'email', 'subject', 'message', 'status', 'created_at']
+        read_only_fields = ['created_at']

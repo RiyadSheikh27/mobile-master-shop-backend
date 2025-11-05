@@ -28,3 +28,15 @@ class StripeEvent(models.Model):
 
     def __str__(self):
         return f"{self.event_type} ({self.event_id})"
+    
+
+class Contact(models.Model):
+    name = models.CharField(max_length=100, null=True, blank=True)
+    email = models.EmailField(blank=True, null=True)
+    subject = models.CharField(max_length=255, blank=True, null=True)
+    message = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.BooleanField(default=False, null=True, blank=True)
+
+    def __str__(self):
+        return self.email

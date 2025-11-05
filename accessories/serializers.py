@@ -130,7 +130,7 @@ class AcsOrderSerializer(serializers.ModelSerializer):
             'status', 'status_display',
             'payment_status', 'payment_status_display',
             'stripe_payment_intent_id',
-            'notes', 'admin_notes',
+            'notes', 'admin_notes', 'is_read',
             'created_at', 'updated_at', 'confirmed_at', 'shipped_at', 'delivered_at'
         ]
         read_only_fields = [
@@ -162,7 +162,7 @@ class AcsOrderListSerializer(serializers.ModelSerializer):
 class AcsOrderUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = AcsOrder
-        fields = ['status', 'admin_notes']
+        fields = ['status', 'admin_notes', 'is_read']
 
 
 # ==================== REVIEW SERIALIZERS ====================
