@@ -26,6 +26,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.template.loader import render_to_string
 from django.core.mail import EmailMultiAlternatives
+from .mypaginations import StandardResultsSetPagination
 
 logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -860,6 +861,11 @@ class UnifiedAdminOrderListView(APIView):
         
         # Calculate revenue
         unread_count = 0
+        repair_unread = 0
+        phone_unread = 0
+        acceessories_unread = 0
+
+
         total_revenue = Decimal('0.00')
         pending_revenue = Decimal('0.00')
         
@@ -872,8 +878,20 @@ class UnifiedAdminOrderListView(APIView):
         
         # Count unread orders
         for order in all_orders:
-            if not order.is_read:  # since it's a boolean
+            if not order.is_read:  
                 unread_count += 1
+
+        for order in phone_orders:
+            if not order.is_read:  
+                repair_unread += 1
+
+        for order in accessory_orders:
+            if not order.is_read:  
+                phone_unread += 1
+
+        for order in repair_orders:
+            if not order.is_read:  
+                acceessories_unread += 1
         
         
         # Revenue breakdown by order type
@@ -891,7 +909,10 @@ class UnifiedAdminOrderListView(APIView):
             'total_revenue': str(total_revenue),
             'pending_revenue': str(pending_revenue),
             'revenue_by_type': {k: str(v) for k, v in revenue_by_type.items()},
-            'unread_count': unread_count,  # keep as integer
+            'unread_count': unread_count,
+            'repair_unread': repair_unread,
+            'phone_unread': phone_unread,
+            'acceessories_unread': acceessories_unread,
         }
 
     def _serialize_phone_order(self, order):
@@ -987,16 +1008,19 @@ class ContactViewSet(viewsets.ModelViewSet):
     queryset = Contact.objects.all().order_by('-created_at')
     serializer_class = ContactSerializer
     permission_classes = [AllowAny]
+    pagination_class = StandardResultsSetPagination  
 
     def list(self, request, *args, **kwargs):
-        """Get all contact messages"""
+        """Get all contact messages with pagination"""
         queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            "success": True,
-            "message": "All contact messages fetched successfully.",
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
+        page = self.paginate_queryset(queryset) 
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response({
+                "success": True,
+                "message": "All contact messages fetched successfully.",
+                "data": serializer.data
+            })
 
     def retrieve(self, request, *args, **kwargs):
         """Get a specific contact message"""
