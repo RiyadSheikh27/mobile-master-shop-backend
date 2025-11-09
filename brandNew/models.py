@@ -10,7 +10,6 @@ import uuid
 
 User = get_user_model()
 
-
 class NewPhoneBrand(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True, blank=True)
@@ -245,7 +244,7 @@ class NewPhoneOrder(models.Model):
         default=Decimal('0.00'),
         validators=[MinValueValidator(Decimal('0.00'))]
     )
-    shipping_cost = models.DecimalField(
+    vat = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         default=Decimal('0.00')
@@ -315,7 +314,7 @@ class NewPhoneOrder(models.Model):
         discount += self.website_discount_amount
         
         # Calculate total
-        self.total_amount = self.subtotal - discount + self.shipping_cost
+        self.total_amount = self.subtotal - discount + self.vat
         self.total_amount = max(self.total_amount, Decimal('0.00'))
         
         return self.total_amount

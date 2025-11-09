@@ -154,11 +154,11 @@ class AcsWebsiteDiscountViewSet(viewsets.ModelViewSet):
 # ==================== ORDER VIEWSET ====================
 class AcsOrderViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
-        if self.action == 'create':
-            return [IsAuthenticated()]
+        if self.action in ['create', 'confirm_payment']:
+            return [AllowAny()]
         elif self.action in ['update', 'partial_update', 'destroy']:
             return [IsAdmin()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -262,7 +262,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
             website_discount_amount = active_discount.amount
         
         # Calculate shipping
-        shipping_cost = Decimal('0.00')
+        vat = Decimal('0.20')
         
         # Calculate prices
         unit_price = product.final_price
@@ -275,8 +275,15 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
         discount += website_discount_amount
         
         # Calculate total
-        total_amount = subtotal - discount + shipping_cost
+        total_amount = subtotal - discount
+        total_amount += total_amount * vat
         total_amount = max(total_amount, Decimal('0.00'))
+        
+        # Generate guest UUID for non-authenticated users
+        guest_uuid = None
+        if not request.user.is_authenticated:
+            import uuid
+            guest_uuid = str(uuid.uuid4())
         
         # Create order
         order = AcsOrder.objects.create(
@@ -294,7 +301,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
             subtotal=subtotal,
             website_discount_percentage=website_discount_percentage,
             website_discount_amount=website_discount_amount,
-            shipping_cost=shipping_cost,
+            vat=vat,
             total_amount=total_amount,
             notes=data.get('notes', ''),
             status='pending',
@@ -308,7 +315,8 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
                 metadata={
                     'order_id': order.id,
                     'order_number': order.order_number,
-                    'customer_email': order.customer_email
+                    'customer_email': order.customer_email,
+                    'guest_uuid': guest_uuid if guest_uuid else 'authenticated_user'
                 },
                 description=f"Order {order.order_number} - {product.title}"
             )
@@ -318,18 +326,24 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
             
             output_serializer = AcsOrderSerializer(order)
             
+            response_data = {
+                'order': output_serializer.data,
+                'payment': {
+                    'client_secret': payment_intent.client_secret,
+                    'payment_intent_id': payment_intent.id,
+                    'amount': str(order.total_amount),
+                    'currency': 'USD'
+                }
+            }
+            
+            # Include guest_uuid for guest checkout
+            if guest_uuid:
+                response_data['guest_uuid'] = guest_uuid
+            
             return Response({
                 'success': True,
                 'message': 'Order created successfully',
-                'data': {
-                    'order': output_serializer.data,
-                    'payment': {
-                        'client_secret': payment_intent.client_secret,
-                        'payment_intent_id': payment_intent.id,
-                        'amount': str(order.total_amount),
-                        'currency': 'USD'
-                    }
-                }
+                'data': response_data
             }, status=status.HTTP_201_CREATED)
             
         except Exception as e:
@@ -339,6 +353,8 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'message': f'Payment initialization failed: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
+    
+      
 
     @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def confirm_payment(self, request, pk=None):
@@ -393,6 +409,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'message': f'Payment verification failed: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
+    
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def cancel(self, request, pk=None):
@@ -466,10 +483,11 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
         discount += website_discount_amount
         
         # Shipping
-        shipping_cost = Decimal('0.00')
+        vat = Decimal('0.20')
         
         # Total
-        total_amount = subtotal - discount + shipping_cost
+        total_amount = subtotal - discount
+        total_amount += total_amount * vat
         total_amount = max(total_amount, Decimal('0.00'))
         
         return Response({
@@ -483,7 +501,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
                 'discount_percentage': str(website_discount_percentage),
                 'discount_amount': str(website_discount_amount),
                 'total_discount': str(discount),
-                'shipping_cost': str(shipping_cost),
+                'vat': str(vat),
                 'total_amount': str(total_amount)
             }
         }, status=status.HTTP_200_OK)

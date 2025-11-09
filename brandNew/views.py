@@ -205,7 +205,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             return [AllowAny()]
         elif self.action in ['update', 'partial_update', 'destroy']:
             return [IsAdmin()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -352,7 +352,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             website_discount_amount = active_discount.amount
         
         # Calculate shipping (you can modify this logic)
-        shipping_cost = Decimal('00.00')  # Flat rate
+        vat = Decimal('00.20')  # Flat rate
         
         # Calculate prices before creating order
         unit_price = phone_model.final_price
@@ -365,8 +365,15 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
         discount += website_discount_amount
         
         # Calculate total
-        total_amount = subtotal - discount + shipping_cost
+        total_amount = subtotal - discount
+        total_amount += total_amount * vat
         total_amount = max(total_amount, Decimal('0.00'))
+        
+        # Generate guest UUID for non-authenticated users
+        guest_uuid = None
+        if not request.user.is_authenticated:
+            import uuid
+            guest_uuid = str(uuid.uuid4())
         
         # Create order with calculated total_amount
         order = NewPhoneOrder.objects.create(
@@ -385,7 +392,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             subtotal=subtotal,
             website_discount_percentage=website_discount_percentage,
             website_discount_amount=website_discount_amount,
-            shipping_cost=shipping_cost,
+            vat=vat,
             total_amount=total_amount,
             notes=data.get('notes', ''),
             status='pending',
@@ -400,7 +407,8 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                 metadata={
                     'order_id': order.id,
                     'order_number': order.order_number,
-                    'customer_email': order.customer_email
+                    'customer_email': order.customer_email,
+                    'guest_uuid': guest_uuid if guest_uuid else 'authenticated_user'
                 },
                 description=f"Order {order.order_number} - {phone_model.name}"
             )
@@ -410,18 +418,24 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             
             output_serializer = NewPhoneOrderSerializer(order)
             
+            response_data = {
+                'order': output_serializer.data,
+                'payment': {
+                    'client_secret': payment_intent.client_secret,
+                    'payment_intent_id': payment_intent.id,
+                    'amount': str(order.total_amount),
+                    'currency': 'USD'
+                }
+            }
+            
+            # Include guest_uuid for guest checkout
+            if guest_uuid:
+                response_data['guest_uuid'] = guest_uuid
+            
             return Response({
                 'success': True,
                 'message': 'Order created successfully',
-                'data': {
-                    'order': output_serializer.data,
-                    'payment': {
-                        'client_secret': payment_intent.client_secret,
-                        'payment_intent_id': payment_intent.id,
-                        'amount': str(order.total_amount),
-                        'currency': 'USD'
-                    }
-                }
+                'data': response_data
             }, status=status.HTTP_201_CREATED)
             
         except stripe.error.StripeError as e:
@@ -431,7 +445,62 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'message': f'Payment initialization failed: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
+    
 
+    # @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    # def track_guest_order(self, request):
+    #     """
+    #     Track order for guest users using payment_intent_id
+    #     Body: {
+    #         "payment_intent_id": "pi_xxxxx",
+    #         "guest_uuid": "uuid-string"
+    #     }
+    #     """
+    #     payment_intent_id = request.data.get('payment_intent_id')
+    #     guest_uuid = request.data.get('guest_uuid')
+        
+    #     if not payment_intent_id or not guest_uuid:
+    #         return Response({
+    #             'success': False,
+    #             'message': 'payment_intent_id and guest_uuid are required'
+    #         }, status=status.HTTP_400_BAD_REQUEST)
+        
+    #     try:
+    #         # Verify with Stripe
+    #         payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+    #         stored_guest_uuid = payment_intent.metadata.get('guest_uuid')
+            
+    #         if stored_guest_uuid != guest_uuid:
+    #             return Response({
+    #                 'success': False,
+    #                 'message': 'Invalid guest credentials'
+    #             }, status=status.HTTP_403_FORBIDDEN)
+            
+    #         # Get order
+    #         order = NewPhoneOrder.objects.select_related(
+    #             'phone_model__brand', 'selected_color'
+    #         ).prefetch_related('phone_model__colors').get(
+    #             stripe_payment_intent_id=payment_intent_id
+    #         )
+            
+    #         serializer = NewPhoneOrderSerializer(order)
+    #         return Response({
+    #             'success': True,
+    #             'message': 'Order found',
+    #             'data': serializer.data
+    #         }, status=status.HTTP_200_OK)
+            
+    #     except stripe.error.StripeError:
+    #         return Response({
+    #             'success': False,
+    #             'message': 'Unable to verify guest credentials'
+    #         }, status=status.HTTP_400_BAD_REQUEST)
+    #     except NewPhoneOrder.DoesNotExist:
+    #         return Response({
+    #             'success': False,
+    #             'message': 'Order not found'
+            # }, status=status.HTTP_404_NOT_FOUND)
+            
     @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def confirm_payment(self, request, pk=None):
         """Confirm payment after successful Stripe payment"""
@@ -491,6 +560,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'message': f'Payment verification failed: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
+    
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def cancel(self, request, pk=None):
@@ -570,10 +640,11 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
         discount += website_discount_amount
         
         # Shipping
-        shipping_cost = Decimal('00.00')
+        vat = Decimal('00.20')
         
         # Total
-        total_amount = subtotal - discount + shipping_cost
+        total_amount = subtotal - discount
+        total_amount += total_amount * vat
         total_amount = max(total_amount, Decimal('0.00'))
         
         return Response({
@@ -588,7 +659,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                 'discount_percentage': str(website_discount_percentage),
                 'discount_amount': str(website_discount_amount),
                 'total_discount': str(discount),
-                'shipping_cost': str(shipping_cost),
+                'vat': str(vat),
                 'total_amount': str(total_amount)
             }
         }, status=status.HTTP_200_OK)

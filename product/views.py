@@ -431,7 +431,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             return [AllowAny()]
         elif self.action in ['update', 'partial_update', 'destroy']:
             return [IsAdmin()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -508,32 +508,30 @@ class OrderViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         """
         Create a new order with Stripe payment integration
-        Body: {
-            "phone_model_id": 1,
-            "customer_name": "John Doe",
-            "customer_email": "john@example.com",
-            "customer_phone": "+1234567890",
-            "items": [
-                {"problem_id": 1, "part_type": "original"},
-                {"problem_id": 2, "part_type": "duplicate"}
-            ],
-            "notes": "Please handle with care"
-        }
+        Supports both authenticated users and guest checkout
         """
         serializer = OrderCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
+    
         data = serializer.validated_data
         phone_model = PhoneModel.objects.get(id=data["phone_model_id"])
-
+    
         # Get website discount
         website_discount_obj = WebsiteDiscount.objects.filter(is_active=True).first()
         website_discount_percentage = website_discount_obj.percentage if website_discount_obj else Decimal("0.00")
         website_discount_amount = website_discount_obj.amount if website_discount_obj else Decimal("0.00")
-
+    
+        # Generate guest UUID for non-authenticated users
+        user_or_guest = request.user if request.user.is_authenticated else None
+        guest_uuid = None
+        
+        if not request.user.is_authenticated:
+            import uuid
+            guest_uuid = str(uuid.uuid4())
+    
         # Create order
         order = Order.objects.create(
-            user=request.user if request.user.is_authenticated else None,
+            user=user_or_guest,
             customer_name=data["customer_name"],
             customer_email=data["customer_email"],
             customer_phone=data["customer_phone"],
@@ -548,7 +546,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             status="pending",
             payment_status="pending",
         )
-
+    
         # Create order items
         for item_data in data["items"]:
             repair_price = RepairPrice.objects.select_related("problem").get(
@@ -557,7 +555,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 part_type=item_data["part_type"],
                 is_active=True,
             )
-
+    
             OrderItem.objects.create(
                 order=order,
                 problem=repair_price.problem,
@@ -568,21 +566,22 @@ class OrderViewSet(viewsets.ModelViewSet):
                 final_price=repair_price.final_price,
                 warranty_days=repair_price.warranty_days,
             )
-
+    
         # Calculate totals
         order.calculate_totals()
         order.save()
-
+    
         # Create Stripe Payment Intent
         try:
             payment_intent = stripe.PaymentIntent.create(
-                amount=int(order.total_amount * 100),  # Convert to cents
-                currency='bdt',  # Bangladesh Taka
+                amount=int(order.total_amount * 100),
+                currency='bdt',
                 metadata={
                     'order_id': order.id,
                     'order_number': order.order_number,
                     'customer_email': order.customer_email,
-                    'phone_model': str(phone_model)
+                    'phone_model': str(phone_model),
+                    'guest_uuid': guest_uuid if guest_uuid else 'authenticated_user'
                 },
                 description=f"Repair Order {order.order_number} - {phone_model}"
             )
@@ -592,25 +591,30 @@ class OrderViewSet(viewsets.ModelViewSet):
             
             output_serializer = OrderSerializer(order)
             
+            response_data = {
+                "order": output_serializer.data,
+                "payment": {
+                    "client_secret": payment_intent.client_secret,
+                    "payment_intent_id": payment_intent.id,
+                    "amount": str(order.total_amount),
+                    "currency": "BDT"
+                }
+            }
+            
+            # Include guest_uuid for guest checkout
+            if guest_uuid:
+                response_data["guest_uuid"] = guest_uuid
+            
             return Response(
                 {
                     "success": True,
                     "message": "Order created successfully",
-                    "data": {
-                        "order": output_serializer.data,
-                        "payment": {
-                            "client_secret": payment_intent.client_secret,
-                            "payment_intent_id": payment_intent.id,
-                            "amount": str(order.total_amount),
-                            "currency": "BDT"
-                        }
-                    }
+                    "data": response_data
                 },
                 status=status.HTTP_201_CREATED,
             )
             
         except stripe.error.StripeError as e:
-            # If Stripe fails, delete the order
             order.delete()
             return Response(
                 {
@@ -619,6 +623,87 @@ class OrderViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    # @action(detail=True, methods=['post'], permission_classes=[AllowAny])
+    # def confirm_payment(self, request, pk=None):
+    #     """
+    #     Confirm payment after successful Stripe payment
+    #     Body: {
+    #         "payment_intent_id": "pi_xxxxxxxxxxxxx",
+    #         "guest_uuid": "uuid-string" (optional, required for guest checkout)
+    #     }
+    #     """
+    #     order = self.get_object()
+        
+    #     payment_intent_id = request.data.get('payment_intent_id')
+        
+    #     if not payment_intent_id or order.payment_intent_id != payment_intent_id:
+    #         return Response({
+    #             'success': False,
+    #             'message': 'Invalid payment intent'
+    #         }, status=status.HTTP_400_BAD_REQUEST)
+        
+    #     # Verify guest access for non-authenticated users
+    #     if not request.user.is_authenticated:
+    #         guest_uuid = request.data.get('guest_uuid')
+    #         if not guest_uuid:
+    #             return Response({
+    #                 'success': False,
+    #                 'message': 'guest_uuid is required for guest checkout'
+    #             }, status=status.HTTP_400_BAD_REQUEST)
+            
+    #         # Verify guest_uuid matches the one in payment intent
+    #         try:
+    #             payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+    #             stored_guest_uuid = payment_intent.metadata.get('guest_uuid')
+                
+    #             if stored_guest_uuid != guest_uuid:
+    #                 return Response({
+    #                     'success': False,
+    #                     'message': 'Invalid guest credentials'
+    #                 }, status=status.HTTP_403_FORBIDDEN)
+    #         except stripe.error.StripeError:
+    #             return Response({
+    #                 'success': False,
+    #                 'message': 'Unable to verify payment'
+    #             }, status=status.HTTP_400_BAD_REQUEST)
+        
+    #     try:
+    #         # Verify payment with Stripe
+    #         payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            
+    #         if payment_intent.status == 'succeeded':
+    #             with transaction.atomic():
+    #                 order.payment_status = 'paid'
+    #                 order.status = 'confirmed'
+    #                 order.confirmed_at = timezone.now()
+    #                 order.payment_method = payment_intent.payment_method_types[0] if payment_intent.payment_method_types else 'card'
+    #                 order.save()
+                    
+    #                 # Set warranty expiry for all items
+    #                 for item in order.order_items.all():
+    #                     item.set_warranty_expiry()
+    #                     item.save()
+                
+    #             serializer = OrderSerializer(order)
+    #             return Response({
+    #                 'success': True,
+    #                 'message': 'Payment confirmed successfully',
+    #                 'data': serializer.data
+    #             }, status=status.HTTP_200_OK)
+    #         else:
+    #             order.payment_status = 'failed'
+    #             order.save()
+    #             return Response({
+    #                 'success': False,
+    #                 'message': f'Payment not completed. Status: {payment_intent.status}'
+    #             }, status=status.HTTP_400_BAD_REQUEST)
+                
+    #     except stripe.error.StripeError as e:
+    #         return Response({
+    #             'success': False,
+    #             'message': f'Payment verification failed: {str(e)}'
+    #         }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def confirm_payment(self, request, pk=None):

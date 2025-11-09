@@ -206,7 +206,7 @@ class NewPhoneOrderSerializer(serializers.ModelSerializer):
             'shipping_address', 'city', 'postal_code', 'country',
             'unit_price', 'subtotal',
             'website_discount_percentage', 'website_discount_amount',
-            'shipping_cost', 'total_amount', 'total_discount',
+            'vat', 'total_amount', 'total_discount',
             'status', 'status_display',
             'payment_status', 'payment_status_display',
             'stripe_payment_intent_id',
@@ -291,7 +291,7 @@ class AdminOrderListSerializer(serializers.ModelSerializer):
             
             'unit_price', 'subtotal',
             'website_discount_percentage', 'website_discount_amount', 'total_discount',
-            'shipping_cost', 'total_amount',
+            'vat', 'total_amount',
             
             'status', 'status_display',
             'payment_status', 'payment_status_display',
