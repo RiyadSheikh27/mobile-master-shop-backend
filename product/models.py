@@ -5,6 +5,7 @@ from decimal import Decimal
 import uuid
 from django.utils.text import slugify
 from django.db.models import Max
+from django.db.models import F, Max
 
 User = get_user_model()
 
@@ -44,6 +45,37 @@ class PhoneModel(models.Model):
         if self._state.adding and not self.rank:
             max_rank = PhoneModel.objects.aggregate(Max('rank'))['rank__max'] or 0
             self.rank = max_rank + 1
+
+        # ---------------------
+        # UPDATE: Reordering rank
+        # ---------------------
+        if self.pk:
+            old_rank = PhoneModel.objects.get(pk=self.pk).rank
+
+            # If rank not changed → do nothing
+            if self.rank == old_rank:
+                return super().save(*args, **kwargs)
+
+            # ---------------------
+            # Case 1: Move UP (new < old)
+            # ---------------------
+            if self.rank < old_rank:
+                PhoneModel.objects.filter(
+                    brand=self.brand,
+                    rank__gte=self.rank,
+                    rank__lt=old_rank
+                ).update(rank=F('rank') + 1)
+
+            # ---------------------
+            # Case 2: Move DOWN (new > old)
+            # ---------------------
+            else:
+                PhoneModel.objects.filter(
+                    brand=self.brand,
+                    rank__gt=old_rank,
+                    rank__lte=self.rank
+                ).update(rank=F('rank') - 1)
+
         super().save(*args, **kwargs)
 
     class Meta:

@@ -883,15 +883,15 @@ class UnifiedAdminOrderListView(APIView):
 
         for order in phone_orders:
             if not order.is_read:  
-                repair_unread += 1
+                phone_unread += 1
 
         for order in accessory_orders:
             if not order.is_read:  
-                phone_unread += 1
+                acceessories_unread += 1
 
         for order in repair_orders:
             if not order.is_read:  
-                acceessories_unread += 1
+                repair_unread += 1
         
         
         # Revenue breakdown by order type

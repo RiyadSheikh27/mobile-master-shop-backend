@@ -9,7 +9,6 @@ import uuid
 
 User = get_user_model()
 
-
 class AcsProduct(models.Model):
     """Accessories Product Model"""
     title = models.CharField(max_length=200)

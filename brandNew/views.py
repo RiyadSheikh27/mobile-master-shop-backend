@@ -446,60 +446,6 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                 'message': f'Payment initialization failed: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
     
-
-    # @action(detail=False, methods=['post'], permission_classes=[AllowAny])
-    # def track_guest_order(self, request):
-    #     """
-    #     Track order for guest users using payment_intent_id
-    #     Body: {
-    #         "payment_intent_id": "pi_xxxxx",
-    #         "guest_uuid": "uuid-string"
-    #     }
-    #     """
-    #     payment_intent_id = request.data.get('payment_intent_id')
-    #     guest_uuid = request.data.get('guest_uuid')
-        
-    #     if not payment_intent_id or not guest_uuid:
-    #         return Response({
-    #             'success': False,
-    #             'message': 'payment_intent_id and guest_uuid are required'
-    #         }, status=status.HTTP_400_BAD_REQUEST)
-        
-    #     try:
-    #         # Verify with Stripe
-    #         payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-    #         stored_guest_uuid = payment_intent.metadata.get('guest_uuid')
-            
-    #         if stored_guest_uuid != guest_uuid:
-    #             return Response({
-    #                 'success': False,
-    #                 'message': 'Invalid guest credentials'
-    #             }, status=status.HTTP_403_FORBIDDEN)
-            
-    #         # Get order
-    #         order = NewPhoneOrder.objects.select_related(
-    #             'phone_model__brand', 'selected_color'
-    #         ).prefetch_related('phone_model__colors').get(
-    #             stripe_payment_intent_id=payment_intent_id
-    #         )
-            
-    #         serializer = NewPhoneOrderSerializer(order)
-    #         return Response({
-    #             'success': True,
-    #             'message': 'Order found',
-    #             'data': serializer.data
-    #         }, status=status.HTTP_200_OK)
-            
-    #     except stripe.error.StripeError:
-    #         return Response({
-    #             'success': False,
-    #             'message': 'Unable to verify guest credentials'
-    #         }, status=status.HTTP_400_BAD_REQUEST)
-    #     except NewPhoneOrder.DoesNotExist:
-    #         return Response({
-    #             'success': False,
-    #             'message': 'Order not found'
-            # }, status=status.HTTP_404_NOT_FOUND)
             
     @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def confirm_payment(self, request, pk=None):

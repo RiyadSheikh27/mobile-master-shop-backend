@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 import uuid
+from django.db.models import F, Max
 
 User = get_user_model()
 
@@ -126,6 +127,37 @@ class NewPhoneModel(models.Model):
         if self.rank == 0:
             max_rank = NewPhoneModel.objects.filter(brand=self.brand).aggregate(Max('rank'))['rank__max'] or 0
             self.rank = max_rank + 1
+
+        # ---------------------
+        # UPDATE: Reordering rank
+        # ---------------------
+        if self.pk:
+            old_rank = NewPhoneModel.objects.get(pk=self.pk).rank
+
+            # If rank not changed → do nothing
+            if self.rank == old_rank:
+                return super().save(*args, **kwargs)
+
+            # ---------------------
+            # Case 1: Move UP (new < old)
+            # ---------------------
+            if self.rank < old_rank:
+                NewPhoneModel.objects.filter(
+                    brand=self.brand,
+                    rank__gte=self.rank,
+                    rank__lt=old_rank
+                ).update(rank=F('rank') + 1)
+
+            # ---------------------
+            # Case 2: Move DOWN (new > old)
+            # ---------------------
+            else:
+                NewPhoneModel.objects.filter(
+                    brand=self.brand,
+                    rank__gt=old_rank,
+                    rank__lte=self.rank
+                ).update(rank=F('rank') - 1)
+
 
         if not self.slug:
             base_slug = slugify(f"{self.brand.name} {self.name}")
