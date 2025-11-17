@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from decimal import Decimal
 from .models import *
 from .serializers import *
@@ -11,7 +11,6 @@ from accounts.permissions import IsAdmin, IsUser, IsOwnerOrReadOnly
 import stripe
 from django.conf import settings
 from django.utils import timezone
-# from accounts.mypaginations import MyLimitOffsetPagination
 
 # Initialize Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -102,6 +101,114 @@ class PhoneColorViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
 
+# ==================== STOCK MANAGEMENT VIEWSET ====================
+class StockManagementViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing stock by color for phone models
+    """
+    serializer_class = StockManagementSerializer
+    permission_classes = [AllowAny]
+    
+    def get_queryset(self):
+        queryset = StockManagement.objects.select_related('phone_model', 'color').all()
+        
+        # Filter by phone model if provided
+        phone_model_id = self.request.query_params.get('phone_model')
+        if phone_model_id:
+            queryset = queryset.filter(phone_model_id=phone_model_id)
+        
+        # Filter by color if provided
+        color_id = self.request.query_params.get('color')
+        if color_id:
+            queryset = queryset.filter(color_id=color_id)
+        
+        # Filter by in_stock
+        in_stock = self.request.query_params.get('in_stock')
+        if in_stock and in_stock.lower() == 'true':
+            queryset = queryset.filter(stock__gt=0)
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return StockManagementWriteSerializer
+        return StockManagementSerializer
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'message': 'Stock management retrieved successfully',
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response({
+            'success': True,
+            'message': 'Stock details retrieved successfully',
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            phone_model_id = request.data.get('phone_model')
+            color_id = request.data.get('color')
+            
+            if StockManagement.objects.filter(phone_model_id=phone_model_id, color_id=color_id).exists():
+                return Response({
+                    'success': False,
+                    'message': 'Stock entry already exists for this phone model and color',
+                    'errors': {'detail': 'Duplicate entry'}
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            serializer.save()
+            return Response({
+                'success': True,
+                'message': 'Stock created successfully',
+                'data': serializer.data
+            }, status=status.HTTP_201_CREATED)
+        return Response({
+            'success': False,
+            'message': 'Validation failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            read_serializer = StockManagementSerializer(instance)
+            return Response({
+                'success': True,
+                'message': 'Stock updated successfully',
+                'data': read_serializer.data
+            }, status=status.HTTP_200_OK)
+        return Response({
+            'success': False,
+            'message': 'Update failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+    
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return Response({
+            'success': True,
+            'message': 'Stock deleted successfully',
+            'data': None
+        }, status=status.HTTP_200_OK)
+
+
 # ==================== PHONE MODEL VIEWSET ====================
 class NewPhoneModelViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
@@ -113,9 +220,49 @@ class NewPhoneModelViewSet(viewsets.ModelViewSet):
         elif self.action in ['create', 'update', 'partial_update']:
             return PhoneModelCreateUpdateSerializer
         return PhoneModelListSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Create phone model with stock management in single request"""
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            phone_model = serializer.save()
+            # Return full detail serializer with stock_management
+            output_serializer = PhoneModelDetailSerializer(phone_model)
+            return Response({
+                'success': True,
+                'message': 'Phone model created successfully with stock management',
+                'data': output_serializer.data
+            }, status=status.HTTP_201_CREATED)
+        return Response({
+            'success': False,
+            'message': 'Validation failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def update(self, request, *args, **kwargs):
+        """Update phone model and optionally update stock management"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        if serializer.is_valid():
+            phone_model = serializer.save()
+            # Return full detail serializer with stock_management
+            output_serializer = PhoneModelDetailSerializer(phone_model)
+            return Response({
+                'success': True,
+                'message': 'Phone model updated successfully',
+                'data': output_serializer.data
+            }, status=status.HTTP_200_OK)
+        return Response({
+            'success': False,
+            'message': 'Update failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     def get_queryset(self):
-        queryset = NewPhoneModel.objects.filter(is_active=True).select_related('brand').prefetch_related('colors', 'reviews')
+        queryset = NewPhoneModel.objects.filter(is_active=True).select_related('brand').prefetch_related(
+            'colors', 'reviews', 'stock_management', 'stock_management__color'
+        )
         
         brand_slug = self.request.query_params.get('brand')
         if brand_slug:
@@ -123,7 +270,7 @@ class NewPhoneModelViewSet(viewsets.ModelViewSet):
         
         in_stock = self.request.query_params.get('in_stock')
         if in_stock and in_stock.lower() == 'true':
-            queryset = queryset.filter(stock_quantity__gt=0)
+            queryset = queryset.filter(stock_management__stock__gt=0).distinct()
         
         featured = self.request.query_params.get('featured')
         if featured and featured.lower() == 'true':
@@ -155,6 +302,53 @@ class NewPhoneModelViewSet(viewsets.ModelViewSet):
             'message': 'Phone details retrieved successfully',
             'data': serializer.data
         }, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['get', 'post'], url_path='stock')
+    def manage_stock(self, request, pk=None):
+        """
+        GET: List all stock entries for this phone model
+        POST: Create new stock entry for this phone model
+        """
+        phone_model = self.get_object()
+        
+        if request.method == 'GET':
+            stocks = phone_model.stock_management.all()
+            serializer = StockManagementSerializer(stocks, many=True)
+            return Response({
+                'success': True,
+                'message': 'Stock entries retrieved successfully',
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            data = request.data.copy()
+            data['phone_model'] = phone_model.id
+            
+            serializer = StockManagementWriteSerializer(data=data)
+            if serializer.is_valid():
+                if StockManagement.objects.filter(
+                    phone_model=phone_model, 
+                    color_id=data.get('color')
+                ).exists():
+                    return Response({
+                        'success': False,
+                        'message': 'Stock for this color already exists',
+                        'errors': {'detail': 'Duplicate entry'}
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                stock = serializer.save(phone_model=phone_model)
+                read_serializer = StockManagementSerializer(stock)
+                return Response({
+                    'success': True,
+                    'message': 'Stock created successfully',
+                    'data': read_serializer.data
+                }, status=status.HTTP_201_CREATED)
+            
+            return Response({
+                'success': False,
+                'message': 'Validation failed',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ==================== DISCOUNT VIEWSET ====================
@@ -218,7 +412,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = NewPhoneOrder.objects.select_related(
-            'user', 'phone_model__brand', 'selected_color'
+            'user', 'phone_model__brand', 'selected_color', 'stock_management', 'stock_management__color'
         ).prefetch_related('phone_model__colors')
 
         if self.request.user.is_authenticated:
@@ -229,6 +423,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                     Q(user=self.request.user) | 
                     Q(customer_email=self.request.user.email)
                 )
+        
         status_param = self.request.query_params.get('status')
         if status_param:
             queryset = queryset.filter(status=status_param)
@@ -258,32 +453,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
     
     def destroy(self, request, *args, **kwargs):
-        """
-        Delete an order (Admin only)
-        - Returns deleted order details in response
-        - Prevents deletion of paid orders without refund
-        """
-        order = self.get_object()
-        
-        # Serialize order data before deletion
-        serializer = self.get_serializer(order)
-        order_data = serializer.data
-
-        
-        order_number = order.order_number
-        order_id = order.id
-        
-        # Delete the order
-        with transaction.atomic():
-            order.delete()
-        
-        return Response({
-            'success': True,
-            'message': f'Order {order_number} deleted successfully',
-        }, status=status.HTTP_200_OK)
-    
-    def destroy(self, request, *args, **kwargs):
-
+        """Delete an order (Admin only)"""
         order = self.get_object()
         
         # Serialize order data before deletion
@@ -317,32 +487,18 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create order and initiate Stripe payment"""
+        """Create order and initiate Stripe payment - using StockManagement"""
         serializer = NewPhoneOrderCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
         data = serializer.validated_data
         
-        # Get phone model
-        phone_model = NewPhoneModel.objects.select_related('brand').get(
-            id=data['phone_model_id']
-        )
-        
-        # Get color if provided
-        selected_color = None
-        if data.get('color_id'):
-            selected_color = NewPhoneColor.objects.get(id=data['color_id'])
-        
+        # Get validated objects from serializer
+        phone_model = data['phone_model']
+        stock_mgmt = data['stock_management']
         quantity = data.get('quantity', 1)
         
-        # Check stock
-        if phone_model.stock_quantity < quantity:
-            return Response({
-                'success': False,
-                'message': f'Only {phone_model.stock_quantity} units available'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Get active discount (from WebsiteDiscount model)
+        # Get active discount
         active_discount = WebsiteDiscount.objects.filter(is_active=True).first()
         website_discount_percentage = Decimal('0.00')
         website_discount_amount = Decimal('0.00')
@@ -351,10 +507,10 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             website_discount_percentage = active_discount.percentage
             website_discount_amount = active_discount.amount
         
-        # Calculate shipping (you can modify this logic)
-        vat = Decimal('00.20')  # Flat rate
+        # Calculate VAT
+        vat = Decimal('00.20')
         
-        # Calculate prices before creating order
+        # Calculate prices
         unit_price = phone_model.final_price
         subtotal = unit_price * quantity
         
@@ -375,11 +531,12 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             import uuid
             guest_uuid = str(uuid.uuid4())
         
-        # Create order with calculated total_amount
+        # Create order with stock_management reference
         order = NewPhoneOrder.objects.create(
             user=request.user if request.user.is_authenticated else None,
             phone_model=phone_model,
-            selected_color=selected_color,
+            stock_management=stock_mgmt,
+            selected_color=stock_mgmt.color,  # Store color for easy access
             quantity=quantity,
             customer_name=data['customer_name'],
             customer_email=data['customer_email'],
@@ -404,14 +561,18 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             payment_intent = stripe.PaymentIntent.create(
                 amount=int(order.total_amount * 100),
                 currency='usd',
+                payment_method_types=['card', 'klarna'],
                 metadata={
                     'order_id': order.id,
                     'order_number': order.order_number,
                     'customer_email': order.customer_email,
+                    'phone_model': phone_model.name,
+                    'color': stock_mgmt.color.name if stock_mgmt.color else 'N/A',
                     'guest_uuid': guest_uuid if guest_uuid else 'authenticated_user'
                 },
-                description=f"Order {order.order_number} - {phone_model.name}"
+                description=f"Order {order.order_number} - {phone_model.name} ({stock_mgmt.color.name if stock_mgmt.color else 'No Color'})"
             )
+
             
             order.stripe_payment_intent_id = payment_intent.id
             order.save()
@@ -428,7 +589,6 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                 }
             }
             
-            # Include guest_uuid for guest checkout
             if guest_uuid:
                 response_data['guest_uuid'] = guest_uuid
             
@@ -439,17 +599,15 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_201_CREATED)
             
         except stripe.error.StripeError as e:
-            # If Stripe fails, delete the order
             order.delete()
             return Response({
                 'success': False,
                 'message': f'Payment initialization failed: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
     
-            
     @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def confirm_payment(self, request, pk=None):
-        """Confirm payment after successful Stripe payment"""
+        """Confirm payment after successful Stripe payment - reduces stock from StockManagement"""
         order = self.get_object()
         
         payment_intent_id = request.data.get('payment_intent_id')
@@ -461,7 +619,6 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Retrieve payment intent with latest_charge expansion instead of charges
             payment_intent = stripe.PaymentIntent.retrieve(
                 payment_intent_id,
                 expand=['latest_charge']
@@ -473,7 +630,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                     order.status = 'confirmed'
                     order.confirmed_at = timezone.now()
                     
-                    # Get charge ID from latest_charge
+                    # Get charge ID
                     if hasattr(payment_intent, 'latest_charge') and payment_intent.latest_charge:
                         if isinstance(payment_intent.latest_charge, str):
                             order.stripe_charge_id = payment_intent.latest_charge
@@ -482,10 +639,10 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                     
                     order.save()
                     
-                    # Reduce stock
-                    phone_model = order.phone_model
-                    phone_model.stock_quantity -= order.quantity
-                    phone_model.save()
+                    # CHANGED: Reduce stock from StockManagement instead of phone_model.stock_quantity
+                    stock_mgmt = order.stock_management
+                    stock_mgmt.stock -= order.quantity
+                    stock_mgmt.save()
                 
                 serializer = NewPhoneOrderSerializer(order)
                 return Response({
@@ -506,11 +663,10 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'message': f'Payment verification failed: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
-    
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def cancel(self, request, pk=None):
-        """Cancel an order"""
+        """Cancel an order - restores stock to StockManagement"""
         order = self.get_object()
         
         if order.status not in ['pending', 'confirmed']:
@@ -533,10 +689,11 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                         'message': f'Refund failed: {str(e)}'
                     }, status=status.HTTP_400_BAD_REQUEST)
             
+            # CHANGED: Restore stock to StockManagement instead of phone_model.stock_quantity
             if order.status == 'confirmed':
-                phone_model = order.phone_model
-                phone_model.stock_quantity += order.quantity
-                phone_model.save()
+                stock_mgmt = order.stock_management
+                stock_mgmt.stock += order.quantity
+                stock_mgmt.save()
             
             order.status = 'cancelled'
             order.save()
@@ -564,7 +721,31 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                 'message': 'Phone model not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
+        # Validate stock management
+        try:
+            stock_mgmt = StockManagement.objects.select_related('color').get(
+                id=data['stock_management_id']
+            )
+        except StockManagement.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Stock management entry not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        if stock_mgmt.phone_model_id != data['phone_model_id']:
+            return Response({
+                'success': False,
+                'message': 'This color is not available for the selected phone model'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         quantity = data.get('quantity', 1)
+        
+        # Check stock availability
+        if stock_mgmt.stock < quantity:
+            return Response({
+                'success': False,
+                'message': f'Only {stock_mgmt.stock} units available'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Calculate subtotal
         unit_price = phone_model.final_price
@@ -585,7 +766,7 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             discount = subtotal * (website_discount_percentage / Decimal('100'))
         discount += website_discount_amount
         
-        # Shipping
+        # VAT
         vat = Decimal('00.20')
         
         # Total
@@ -599,6 +780,9 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
             'data': {
                 'phone_model': phone_model.name,
                 'brand': phone_model.brand.name,
+                'color': stock_mgmt.color.name if stock_mgmt.color else 'N/A',
+                'color_hex': stock_mgmt.color.hex_code if stock_mgmt.color else None,
+                'available_stock': stock_mgmt.stock,
                 'unit_price': str(unit_price),
                 'quantity': quantity,
                 'subtotal': str(subtotal),
@@ -615,17 +799,15 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
 class PhoneReviewViewSet(viewsets.ModelViewSet):
     serializer_class = PhoneReviewSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
-    http_method_names = ['get', 'post', 'delete']  # Only allow GET, POST, DELETE
+    http_method_names = ['get', 'post', 'delete']
 
     def get_queryset(self):
         queryset = NewPhoneReview.objects.select_related('phone_model__brand', 'order')
         
-        # Filter by phone model (for admin to see all reviews of a product)
         phone_id = self.request.query_params.get('phone_model')
         if phone_id:
             queryset = queryset.filter(phone_model_id=phone_id)
         
-        # Filter by user's own reviews
         if self.request.user.is_authenticated and self.request.query_params.get('my_reviews'):
             queryset = queryset.filter(
                 Q(order__user=self.request.user) | 
@@ -648,10 +830,8 @@ class PhoneReviewViewSet(viewsets.ModelViewSet):
         create_serializer = PhoneReviewCreateSerializer(data=request.data)
         create_serializer.is_valid(raise_exception=True)
         
-        # Get order
         order = NewPhoneOrder.objects.get(id=create_serializer.validated_data['order_id'])
         
-        # Create review
         review = NewPhoneReview.objects.create(
             order=order,
             phone_model=order.phone_model,
@@ -671,7 +851,6 @@ class PhoneReviewViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         
-        # Only allow deletion by order owner or admin
         if request.user.is_authenticated:
             if request.user.role == 'admin' or instance.order.user == request.user or instance.customer_email == request.user.email:
                 instance.delete()
@@ -686,53 +865,44 @@ class PhoneReviewViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_403_FORBIDDEN)
 
 
-# ========== NEW VIEWSET FOR ADMIN ORDER LIST ==========
+# ========== ADMIN ORDER LIST VIEW ==========
 from rest_framework.views import APIView
 from django.db.models import Count, Sum, Q
 
 class AdminOrderListView(APIView):
     """
     API endpoint for admins to view all orders with comprehensive details
-    Requires authentication and admin role
-    GET: Returns list of all orders with filtering and statistics
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Check if user is admin
         if request.user.role != 'admin':
             return Response({
                 'success': False,
                 'message': 'Permission denied. Only admins can access all orders.'
             }, status=status.HTTP_403_FORBIDDEN)
 
-        # Get all orders with related data
         queryset = NewPhoneOrder.objects.select_related(
-            'user', 'phone_model__brand', 'selected_color'
+            'user', 'phone_model__brand', 'selected_color', 'stock_management', 'stock_management__color'
         ).prefetch_related('phone_model__colors')
 
-        # ========== FILTERING OPTIONS ==========
-        # Filter by status
+        # Filtering
         status_param = request.query_params.get('status')
         if status_param:
             queryset = queryset.filter(status=status_param)
 
-        # Filter by payment status
         payment_status_param = request.query_params.get('payment_status')
         if payment_status_param:
             queryset = queryset.filter(payment_status=payment_status_param)
 
-        # Filter by customer email
         customer_email = request.query_params.get('customer_email')
         if customer_email:
             queryset = queryset.filter(customer_email__icontains=customer_email)
 
-        # Filter by order number
         order_number = request.query_params.get('order_number')
         if order_number:
             queryset = queryset.filter(order_number__icontains=order_number)
 
-        # Filter by date range
         date_from = request.query_params.get('date_from')
         if date_from:
             queryset = queryset.filter(created_at__gte=date_from)
@@ -741,40 +911,29 @@ class AdminOrderListView(APIView):
         if date_to:
             queryset = queryset.filter(created_at__lte=date_to)
 
-        # Filter by phone brand
         brand = request.query_params.get('brand')
         if brand:
             queryset = queryset.filter(phone_model__brand__slug=brand)
-        # ========== END FILTERING OPTIONS ==========
 
-        # Order by newest first
         queryset = queryset.order_by('-created_at')
 
-        # ========== CALCULATE STATISTICS ==========
+        # Statistics
         total_orders = queryset.count()
         
-        # Count by status
         status_counts = queryset.values('status').annotate(count=Count('id'))
         status_summary = {item['status']: item['count'] for item in status_counts}
         
-        # Count by payment status
         payment_counts = queryset.values('payment_status').annotate(count=Count('id'))
         payment_summary = {item['payment_status']: item['count'] for item in payment_counts}
         
-        # Calculate total revenue (only paid orders)
         total_revenue = queryset.filter(
             payment_status='paid'
         ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
         
-        # Calculate pending revenue
         pending_revenue = queryset.filter(
             payment_status='pending'
         ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
-        # ========== END STATISTICS ==========
 
-        # Serialize order data
-        # paginator = MyLimitOffsetPagination()
-        # page = paginator.paginate_queryset(queryset, request)
         serializer = AdminOrderListSerializer(queryset, many=True)
 
         return Response({
@@ -789,4 +948,3 @@ class AdminOrderListView(APIView):
             },
             'data': serializer.data
         }, status=status.HTTP_200_OK)
-# ========== END VIEWSET ==========

@@ -170,11 +170,13 @@ REST_FRAMEWORK = {
 }
 
 ALLOWED_HOSTS = [
+    '*',
     'save-co.lumivancelabs.com',
     'lumivancelabs.com',
     '*.lumivancelabs.com',
     '127.0.0.1',
     'localhost',
+    '192.168.0.20',
 ]
 
 # 2. Fix CORS settings

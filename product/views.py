@@ -575,7 +575,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         try:
             payment_intent = stripe.PaymentIntent.create(
                 amount=int(order.total_amount * 100),
-                currency='bdt',
+                currency='usd',
+                payment_method_types=['card', 'klarna'],
                 metadata={
                     'order_id': order.id,
                     'order_number': order.order_number,

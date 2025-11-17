@@ -1,5 +1,5 @@
 from django.db import models
-from django.db.models import Max
+from django.db.models import Max, Sum
 from django.utils.text import slugify
 from django_ckeditor_5.fields import CKEditor5Field
 from decimal import Decimal
@@ -21,7 +21,6 @@ class NewPhoneBrand(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        
         verbose_name_plural = "New Phone Brands"
         ordering = ['name']
 
@@ -82,9 +81,11 @@ class NewPhoneModel(models.Model):
     description_title = CKEditor5Field('Description Title', config_name='default', null=True, blank=True)
     description = CKEditor5Field('Description', config_name='default', null=True, blank=True)
     
-    # Colors & Stock
+    # DEPRECATED: This field will be removed in future - use StockManagement instead
     colors = models.ManyToManyField(NewPhoneColor, blank=True, related_name='phone_models')
-    stock_quantity = models.PositiveIntegerField(default=0, help_text="Available stock")
+    
+    # DEPRECATED: Use StockManagement total stock instead
+    stock_quantity = models.PositiveIntegerField(default=0, help_text="Available stock (deprecated - use StockManagement)")
     
     # Status
     is_active = models.BooleanField(default=True)
@@ -98,7 +99,7 @@ class NewPhoneModel(models.Model):
     class Meta:
         verbose_name_plural = "New Phone Models"
         ordering = ['-rank', '-id']
-        unique_together = ['brand', 'name']
+        # unique_together = ['brand', 'name']
 
     def __str__(self):
         return f"{self.brand.name} {self.name}"
@@ -120,44 +121,50 @@ class NewPhoneModel(models.Model):
     
     @property
     def is_in_stock(self):
-        """Check if phone is available"""
-        return self.stock_quantity > 0
+        """Check if phone is available - checks StockManagement"""
+        total_stock = self.stock_management.aggregate(
+            total=Sum('stock')
+        )['total'] or 0
+        return total_stock > 0
+    
+    @property
+    def total_stock(self):
+        """Get total stock across all colors from StockManagement"""
+        return self.stock_management.aggregate(
+            total=Sum('stock')
+        )['total'] or 0
+    
+    def get_color_stock(self, color_id):
+        """Get stock for a specific color"""
+        try:
+            stock_entry = self.stock_management.get(color_id=color_id)
+            return stock_entry.stock
+        except StockManagement.DoesNotExist:
+            return 0
     
     def save(self, *args, **kwargs):
         if self.rank == 0:
             max_rank = NewPhoneModel.objects.filter(brand=self.brand).aggregate(Max('rank'))['rank__max'] or 0
             self.rank = max_rank + 1
 
-        # ---------------------
-        # UPDATE: Reordering rank
-        # ---------------------
         if self.pk:
             old_rank = NewPhoneModel.objects.get(pk=self.pk).rank
 
-            # If rank not changed → do nothing
             if self.rank == old_rank:
                 return super().save(*args, **kwargs)
 
-            # ---------------------
-            # Case 1: Move UP (new < old)
-            # ---------------------
             if self.rank < old_rank:
                 NewPhoneModel.objects.filter(
                     brand=self.brand,
                     rank__gte=self.rank,
                     rank__lt=old_rank
                 ).update(rank=F('rank') + 1)
-
-            # ---------------------
-            # Case 2: Move DOWN (new > old)
-            # ---------------------
             else:
                 NewPhoneModel.objects.filter(
                     brand=self.brand,
                     rank__gt=old_rank,
                     rank__lte=self.rank
                 ).update(rank=F('rank') - 1)
-
 
         if not self.slug:
             base_slug = slugify(f"{self.brand.name} {self.name}")
@@ -169,6 +176,29 @@ class NewPhoneModel(models.Model):
             self.slug = slug
     
         super().save(*args, **kwargs)
+
+
+class StockManagement(models.Model):
+    phone_model = models.ForeignKey(NewPhoneModel, on_delete=models.CASCADE, related_name='stock_management')
+    color = models.ForeignKey(NewPhoneColor, on_delete=models.CASCADE, null=True, blank=True, related_name='stock_management')
+    stock = models.PositiveIntegerField(default=0, help_text="Available stock", null=True, blank=True)
+    icon_color_based = models.ImageField(upload_to='icon_color_based/', null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+
+    class Meta:
+        unique_together = ['phone_model', 'color']
+        verbose_name_plural = "Stock Management"
+        ordering = ['phone_model', 'color']
+
+    @property
+    def is_in_stock(self):
+        return (self.stock or 0) > 0
+    
+    def __str__(self):
+        color_name = self.color.name if self.color else "No Color"
+        return f"{self.phone_model.name} - {color_name} - Stock: {self.stock}"
 
 
 class WebsiteDiscount(models.Model):
@@ -233,6 +263,16 @@ class NewPhoneOrder(models.Model):
         on_delete=models.PROTECT,
         related_name='orders'
     )
+    
+    # CHANGED: Now references StockManagement instead of just color
+    stock_management = models.ForeignKey(
+        'StockManagement',
+        on_delete=models.PROTECT,
+        related_name='orders',
+        help_text="Stock management entry (phone + color combination)"
+    )
+    
+    # Keep for backward compatibility and display
     selected_color = models.ForeignKey(
         NewPhoneColor,
         on_delete=models.PROTECT,
@@ -240,18 +280,19 @@ class NewPhoneOrder(models.Model):
         blank=True,
         help_text="Color chosen by customer"
     )
+    
     quantity = models.PositiveIntegerField(default=1)
     
     # Customer Information
-    customer_name = models.CharField(max_length=200)
-    customer_email = models.EmailField()
-    customer_phone = models.CharField(max_length=20)
+    customer_name = models.CharField(max_length=200, null=True, blank=True)
+    customer_email = models.EmailField(null=True, blank=True)
+    customer_phone = models.CharField(max_length=20, null=True, blank=True)
     
     # Shipping Address
-    shipping_address = models.TextField()
-    city = models.CharField(max_length=100)
-    postal_code = models.CharField(max_length=20)
-    country = models.CharField(max_length=100, default='Bangladesh')
+    shipping_address = models.TextField(null=True, blank=True)
+    city = models.CharField(max_length=100, null=True, blank=True)
+    postal_code = models.CharField(max_length=20, null=True, blank=True)
+    country = models.CharField(max_length=100, default='Bangladesh', null=True, blank=True)
     
     # Pricing
     unit_price = models.DecimalField(

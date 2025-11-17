@@ -312,6 +312,7 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
             payment_intent = stripe.PaymentIntent.create(
                 amount=int(order.total_amount * 100),
                 currency='usd',
+                payment_method_types=['card', 'klarna'],
                 metadata={
                     'order_id': order.id,
                     'order_number': order.order_number,
@@ -396,8 +397,6 @@ class AcsOrderViewSet(viewsets.ModelViewSet):
                     'message': 'Payment confirmed successfully',
                     'data': serializer.data
                 }, status=status.HTTP_200_OK)
-            
-            
             else:
                 order.payment_status = 'failed'
                 order.save()

@@ -20,6 +20,7 @@ router.register(r'brandnew/discount', WebsiteDiscountViewSet, basename = 'newpho
 router.register(r'brandnew/review', PhoneReviewViewSet, basename = 'newphonereview')
 router.register(r'brandnew/color', PhoneColorViewSet, basename = 'newphonecolor')
 router.register(r'brandnew/orders', NewPhoneOrderViewSet, basename = 'newphoneorder')
+router.register(r'brandnew/stock-management', StockManagementViewSet, basename='stock-management')
 
 router.register(r'accessories/products', AcsProductViewSet, basename='acsproduct')
 router.register(r'accessories/discount', AcsWebsiteDiscountViewSet, basename='acsdiscount')
