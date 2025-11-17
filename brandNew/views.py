@@ -572,7 +572,6 @@ class NewPhoneOrderViewSet(viewsets.ModelViewSet):
                 },
                 description=f"Order {order.order_number} - {phone_model.name} ({stock_mgmt.color.name if stock_mgmt.color else 'No Color'})"
             )
-
             
             order.stripe_payment_intent_id = payment_intent.id
             order.save()

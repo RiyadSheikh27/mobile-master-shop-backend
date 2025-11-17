@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:15
+    container_name: django_db
+    restart: always
+    environment:
+      POSTGRES_USER: youruser
+      POSTGRES_PASSWORD: yourpassword
+      POSTGRES_DB: yourdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  web:
+    build: .
+    container_name: django_web
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8000
+    volumes:
+      - .:/app
+    expose:
+      - "8000"
+    environment:
+      - DEBUG=0
+      - SECRET_KEY=your_secret_key
+      - DATABASE_NAME=yourdb
+      - DATABASE_USER=youruser
+      - DATABASE_PASSWORD=yourpassword
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - ALLOWED_HOSTS=localhost,0.0.0.0
+    depends_on:
+      - db
+
+  nginx:
+    image: nginx:stable
+    container_name: django_nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:

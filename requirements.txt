@@ -11,6 +11,7 @@ django-allauth==65.12.1
 django-ckeditor==6.7.3
 django-ckeditor-5==0.2.18
 django-cors-headers==4.9.0
+django-environ==0.12.0
 django-js-asset==3.1.2
 djangorestframework==3.16.1
 djangorestframework_simplejwt==5.5.1
@@ -20,6 +21,7 @@ google-auth==2.41.1
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.2
 httplib2==0.31.0
+gunicorn==23.0.0
 idna==3.11
 inflection==0.5.1
 jsonschema==4.25.1

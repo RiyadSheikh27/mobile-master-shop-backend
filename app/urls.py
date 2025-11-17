@@ -21,6 +21,7 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import HttpResponse
 
 schema_view = get_schema_view(
    openapi.Info(
@@ -32,9 +33,12 @@ schema_view = get_schema_view(
    public=True,
    permission_classes=(permissions.AllowAny,),
 )
+def home(request):
+    return HttpResponse("Hello World!")
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('', home),
     path('auth/', include('accounts.urls')),
     path('api/', include('api.urls')),
     path('swagger(<format>\.json|\.yaml)', schema_view.without_ui(cache_timeout=0), name='schema-json'),
