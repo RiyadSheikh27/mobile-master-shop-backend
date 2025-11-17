@@ -66,7 +66,70 @@ class PhoneModelViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(brand__slug=brand_slug)
 
         return queryset
+    
 
+class AdminOrderCreateViewSet(viewsets.ModelViewSet):
+    queryset = AdminOrderCreate.objects.all()
+    serializer_class = AdminOrderCreateSerializer
+    lookup_field = "id"
+
+    # ------- SUCCESS RESPONSE -------
+    def success(self, message, data=None, status_code=status.HTTP_200_OK):
+        return Response({
+            "success": True,
+            "message": message,
+            "data": data
+        }, status=status_code)
+
+    # ------- ERROR RESPONSE -------
+    def error(self, message, details=None, status_code=status.HTTP_400_BAD_REQUEST):
+        return Response({
+            "success": False,
+            "error": message,
+            "details": details
+        }, status=status_code)
+
+    # LIST
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return self.success("Orders fetched successfully", serializer.data)
+
+    # RETRIEVE
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return self.success("Order retrieved successfully", serializer.data)
+
+    # CREATE
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return self.success(
+                "Order created successfully",
+                serializer.data,
+                status.HTTP_201_CREATED
+            )
+        return self.error("Validation failed", serializer.errors)
+
+    # UPDATE (PUT/PATCH)
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+
+        if serializer.is_valid():
+            serializer.save()
+            return self.success("Order updated successfully", serializer.data)
+
+        return self.error("Validation failed", serializer.errors)
+
+    # DELETE
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return self.success("Order deleted successfully")
 
 class DiscountViewSet(viewsets.ModelViewSet):
     """
@@ -571,7 +634,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.calculate_totals()
         order.save()
     
-        # Create Stripe Payment Intent
+
         try:
             payment_intent = stripe.PaymentIntent.create(
                 amount=int(order.total_amount * 100),
@@ -598,7 +661,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     "client_secret": payment_intent.client_secret,
                     "payment_intent_id": payment_intent.id,
                     "amount": str(order.total_amount),
-                    "currency": "BDT"
+                    "currency": "USD"
                 }
             }
             
@@ -624,87 +687,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-    # @action(detail=True, methods=['post'], permission_classes=[AllowAny])
-    # def confirm_payment(self, request, pk=None):
-    #     """
-    #     Confirm payment after successful Stripe payment
-    #     Body: {
-    #         "payment_intent_id": "pi_xxxxxxxxxxxxx",
-    #         "guest_uuid": "uuid-string" (optional, required for guest checkout)
-    #     }
-    #     """
-    #     order = self.get_object()
         
-    #     payment_intent_id = request.data.get('payment_intent_id')
-        
-    #     if not payment_intent_id or order.payment_intent_id != payment_intent_id:
-    #         return Response({
-    #             'success': False,
-    #             'message': 'Invalid payment intent'
-    #         }, status=status.HTTP_400_BAD_REQUEST)
-        
-    #     # Verify guest access for non-authenticated users
-    #     if not request.user.is_authenticated:
-    #         guest_uuid = request.data.get('guest_uuid')
-    #         if not guest_uuid:
-    #             return Response({
-    #                 'success': False,
-    #                 'message': 'guest_uuid is required for guest checkout'
-    #             }, status=status.HTTP_400_BAD_REQUEST)
-            
-    #         # Verify guest_uuid matches the one in payment intent
-    #         try:
-    #             payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-    #             stored_guest_uuid = payment_intent.metadata.get('guest_uuid')
-                
-    #             if stored_guest_uuid != guest_uuid:
-    #                 return Response({
-    #                     'success': False,
-    #                     'message': 'Invalid guest credentials'
-    #                 }, status=status.HTTP_403_FORBIDDEN)
-    #         except stripe.error.StripeError:
-    #             return Response({
-    #                 'success': False,
-    #                 'message': 'Unable to verify payment'
-    #             }, status=status.HTTP_400_BAD_REQUEST)
-        
-    #     try:
-    #         # Verify payment with Stripe
-    #         payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-            
-    #         if payment_intent.status == 'succeeded':
-    #             with transaction.atomic():
-    #                 order.payment_status = 'paid'
-    #                 order.status = 'confirmed'
-    #                 order.confirmed_at = timezone.now()
-    #                 order.payment_method = payment_intent.payment_method_types[0] if payment_intent.payment_method_types else 'card'
-    #                 order.save()
-                    
-    #                 # Set warranty expiry for all items
-    #                 for item in order.order_items.all():
-    #                     item.set_warranty_expiry()
-    #                     item.save()
-                
-    #             serializer = OrderSerializer(order)
-    #             return Response({
-    #                 'success': True,
-    #                 'message': 'Payment confirmed successfully',
-    #                 'data': serializer.data
-    #             }, status=status.HTTP_200_OK)
-    #         else:
-    #             order.payment_status = 'failed'
-    #             order.save()
-    #             return Response({
-    #                 'success': False,
-    #                 'message': f'Payment not completed. Status: {payment_intent.status}'
-    #             }, status=status.HTTP_400_BAD_REQUEST)
-                
-    #     except stripe.error.StripeError as e:
-    #         return Response({
-    #             'success': False,
-    #             'message': f'Payment verification failed: {str(e)}'
-    #         }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def confirm_payment(self, request, pk=None):

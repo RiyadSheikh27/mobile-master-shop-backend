@@ -108,6 +108,29 @@ class PhoneProblem(models.Model):
 
     def __str__(self):
         return self.name
+    
+class AdminOrderCreate(models.Model):
+    """Admin order creation request"""
+    brand = models.ForeignKey(PhoneBrand, on_delete=models.CASCADE, related_name='admin_orders')
+    model = models.ForeignKey(PhoneModel, on_delete=models.CASCADE, related_name='admin_orders')
+    problem = models.ManyToManyField(PhoneProblem, related_name='admin_orders')
+    note = models.TextField(blank=True, null=True)
+    customer_name = models.CharField(max_length=200, null=True, blank=True)
+    customer_email = models.EmailField(null=True, blank=True)
+    customer_phone = models.CharField(max_length=20, null=True, blank=True)
+    customer_address = models.TextField(null=True, blank=True)
+
+    schedule = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Admin custom Orders"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.brand.name} {self.model.name}"
 
 
 class RepairPrice(models.Model):

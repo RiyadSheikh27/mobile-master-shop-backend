@@ -13,6 +13,7 @@ router.register(r'repair/repair-prices', RepairPriceViewSet, basename='repairpri
 router.register(r'repair/orders', OrderViewSet, basename='order')
 router.register(r'repair/discount', DiscountViewSet, basename='websitediscount')
 router.register(r'repair/review', RepairReviewViewSet, basename='repair-review')
+router.register(r'repair/custom-orders', AdminOrderCreateViewSet, basename='admin-orders')
 
 router.register(r'brandnew/brands', NewPhoneBrandViewSet, basename='newphonebrand')
 router.register(r'brandnew/models', NewPhoneModelViewSet, basename='newphonemodel')

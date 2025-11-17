@@ -13,4 +13,5 @@ admin.site.register(Order)
 admin.site.register(OrderItem)
 admin.site.register(WebsiteDiscount)
 admin.site.register(PhoneReview)
+admin.site.register(AdminOrderCreate)
 

@@ -46,6 +46,35 @@ class PhoneProblemSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description', 'icon', 'estimated_time', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['is_active', 'created_at', 'updated_at']
 
+class AdminOrderCreateSerializer(serializers.ModelSerializer):
+    # For ManyToMany, explicitly declare problem as a list of IDs
+    problem = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=PhoneProblem.objects.all()
+    )
+
+    class Meta:
+        model = AdminOrderCreate
+        fields = '__all__'
+
+    def create(self, validated_data):
+        problems = validated_data.pop('problem', [])
+        instance = AdminOrderCreate.objects.create(**validated_data)
+        instance.problem.set(problems)
+        return instance
+
+    def update(self, instance, validated_data):
+        problems = validated_data.pop('problem', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if problems is not None:
+            instance.problem.set(problems)
+
+        return instance
+
+
 class RepairPriceSerializer(serializers.ModelSerializer):
     """Serializer for repair prices with calculated fields"""
     problem_name = serializers.CharField(source='problem.name', read_only=True)

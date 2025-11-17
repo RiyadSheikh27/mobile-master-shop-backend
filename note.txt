@@ -636,3 +636,6 @@ bashcurl -X DELETE http://localhost:8000/api/brand-new-phones/reviews/1/ \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 
 This documentation covers all review endpoints for all three modules with complete request/response examples and business rules!
+
+
+Docker root Password: Mlkphone@2025
