@@ -1,2 +1,4 @@
 .github
 .github/*
+db.sqlite3
+__pycache__
