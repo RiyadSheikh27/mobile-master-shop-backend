@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from .models import *
 from decimal import Decimal
+import json
+import re
 
 
 class PhoneBrandSerializer(serializers.ModelSerializer):
@@ -46,34 +48,91 @@ class PhoneProblemSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description', 'icon', 'estimated_time', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['is_active', 'created_at', 'updated_at']
 
-class AdminOrderCreateSerializer(serializers.ModelSerializer):
-    # For ManyToMany, explicitly declare problem as a list of IDs
-    problem = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=PhoneProblem.objects.all()
-    )
+class AdminOrderCreatePartTypeSerializer(serializers.Serializer):
+    """Serializer for individual problem with part type"""
+    problem_id = serializers.IntegerField()
+    part_type = serializers.ChoiceField(choices=['original', 'duplicate'])
 
+
+class AdminOrderCreateSerializer(serializers.ModelSerializer):
+    problem = AdminOrderCreatePartTypeSerializer(many=True, write_only=True)
+    problems_detail = serializers.SerializerMethodField(read_only=True)
+    
     class Meta:
         model = AdminOrderCreate
-        fields = '__all__'
+        fields = ['id', 'brand', 'model', 'problem', 'problems_detail', 'note', 
+                  'customer_name', 'customer_email', 'customer_phone', 
+                  'customer_address', 'amount', 'schedule', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+    
+    def get_problems_detail(self, obj):
+        """Return problems with their stored metadata"""
+        problems = obj.problem.all()
+        problem_metadata = getattr(obj, '_problem_metadata', {})
+        
+        return [
+            {
+                'problem_id': problem.id,
+                'problem_name': problem.name,
+                'part_type': problem_metadata.get(problem.id, 'original')
+            }
+            for problem in problems
+        ]
+    
+    def validate_problem(self, value):
+        """Validate problem structure"""
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Problem must be a list")
+        
+        for item in value:
+            if not isinstance(item, dict):
+                raise serializers.ValidationError("Each problem item must be a dictionary")
+            
+            if 'problem_id' not in item:
+                raise serializers.ValidationError("Each problem must have 'problem_id'")
+            
+            if 'part_type' not in item:
+                raise serializers.ValidationError("Each problem must have 'part_type'")
+            
+            if item['part_type'] not in ['original', 'duplicate']:
+                raise serializers.ValidationError("part_type must be 'original' or 'duplicate'")
+            
+            try:
+                PhoneProblem.objects.get(id=item['problem_id'])
+            except PhoneProblem.DoesNotExist:
+                raise serializers.ValidationError(f"Problem with id {item['problem_id']} does not exist")
+        
+        return value
 
     def create(self, validated_data):
-        problems = validated_data.pop('problem', [])
+        problems_data = validated_data.pop('problem', [])
+        
+        problem_ids = [p['problem_id'] for p in problems_data]
+        problem_metadata = {p['problem_id']: p['part_type'] for p in problems_data}
+        
         instance = AdminOrderCreate.objects.create(**validated_data)
-        instance.problem.set(problems)
+        
+        instance.problem.set(problem_ids)
+        
+        instance._problem_metadata = problem_metadata
+        
         return instance
 
     def update(self, instance, validated_data):
-        problems = validated_data.pop('problem', None)
+        problems_data = validated_data.pop('problem', None)
+        
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        if problems is not None:
-            instance.problem.set(problems)
+        if problems_data is not None:
+            problem_ids = [p['problem_id'] for p in problems_data]
+            problem_metadata = {p['problem_id']: p['part_type'] for p in problems_data}
+            
+            instance.problem.set(problem_ids)
+            instance._problem_metadata = problem_metadata
 
         return instance
-
 
 class RepairPriceSerializer(serializers.ModelSerializer):
     """Serializer for repair prices with calculated fields"""

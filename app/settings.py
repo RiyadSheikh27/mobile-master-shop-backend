@@ -26,7 +26,7 @@ GOOGLE_OAUTH_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 SECRET_KEY = 'django-insecure-m$*dz^9hz_71p7j!)yx)f%yv9mb1l+6h16&nc4n9er7_oi=3$&'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 

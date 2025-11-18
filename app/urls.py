@@ -25,21 +25,21 @@ from django.http import HttpResponse
 
 schema_view = get_schema_view(
    openapi.Info(
-      title="Your Project API",
-      default_version='v1',
-      description="API documentation for your project",
-      contact=openapi.Contact(email="youremail@example.com"),
+      title="Phone Repair Shop's API",
+      default_version='v3',
+      description="API documentation for Phone Repair Shop",
+      contact=openapi.Contact(email="riyad.cse27@gmail.com"),
    ),
    public=True,
    permission_classes=(permissions.AllowAny,),
 )
-def home(request):
-    return HttpResponse("Hello World!")
+# def home(request):
+#     return HttpResponse("Hello World!")
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', home),
     path('auth/', include('accounts.urls')),
+    # path('', home, name='home'),
     path('api/', include('api.urls')),
     path('swagger(<format>\.json|\.yaml)', schema_view.without_ui(cache_timeout=0), name='schema-json'),
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),

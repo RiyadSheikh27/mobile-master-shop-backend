@@ -1,3 +1,5 @@
+import json
+import re
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -15,7 +17,12 @@ from .serializers import *
 import stripe
 from django.conf import settings
 from django.utils import timezone
-# from accounts.mypaginations import MyLimitOffsetPagination
+from django.template.loader import render_to_string
+from django.core.mail import EmailMultiAlternatives, send_mail
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -67,13 +74,11 @@ class PhoneModelViewSet(viewsets.ModelViewSet):
 
         return queryset
     
-
 class AdminOrderCreateViewSet(viewsets.ModelViewSet):
     queryset = AdminOrderCreate.objects.all()
     serializer_class = AdminOrderCreateSerializer
     lookup_field = "id"
 
-    # ------- SUCCESS RESPONSE -------
     def success(self, message, data=None, status_code=status.HTTP_200_OK):
         return Response({
             "success": True,
@@ -81,7 +86,6 @@ class AdminOrderCreateViewSet(viewsets.ModelViewSet):
             "data": data
         }, status=status_code)
 
-    # ------- ERROR RESPONSE -------
     def error(self, message, details=None, status_code=status.HTTP_400_BAD_REQUEST):
         return Response({
             "success": False,
@@ -89,31 +93,31 @@ class AdminOrderCreateViewSet(viewsets.ModelViewSet):
             "details": details
         }, status=status_code)
 
-    # LIST
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return self.success("Orders fetched successfully", serializer.data)
 
-    # RETRIEVE
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return self.success("Order retrieved successfully", serializer.data)
 
-    # CREATE
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            order = serializer.save()
+
+            if order.customer_email:
+                self.send_booking_email(order)
+
             return self.success(
                 "Order created successfully",
-                serializer.data,
+                self.get_serializer(order).data,
                 status.HTTP_201_CREATED
             )
         return self.error("Validation failed", serializer.errors)
 
-    # UPDATE (PUT/PATCH)
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
@@ -125,11 +129,54 @@ class AdminOrderCreateViewSet(viewsets.ModelViewSet):
 
         return self.error("Validation failed", serializer.errors)
 
-    # DELETE
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         instance.delete()
         return self.success("Order deleted successfully")
+    
+
+    def send_booking_email(self, order):
+        """Send booking confirmation email to customer"""
+        try:
+            # Extract problem metadata (first try from instance cache, then from note)
+            problem_metadata = getattr(order, '_problem_metadata', None)
+            if not problem_metadata:
+                problem_metadata = self._extract_problem_metadata(order)
+            
+            # Get all problems with their part types
+            problems_list = []
+            for problem in order.problem.all():
+                problems_list.append({
+                    'name': problem.name,
+                    'part_type': problem_metadata.get(str(problem.id), 'original')
+                })
+            
+            
+            subject = f'Your booking confirmation to repair {order.model.name}'
+            html_content = render_to_string('emails/booking_confirmation.html', {
+                'order': order,
+                'phone_model': order.model.name,
+                'phone_model_brand': order.brand.name,
+                'customer_name': order.customer_name,
+                'customer_email': order.customer_email,
+                'customer_phone': order.customer_phone,
+                'customer_address': order.customer_address,
+                'schedule': order.schedule,
+                'amount': order.amount,
+                'problems_list': problems_list,  # List of problems with part types
+                'notes': order.note, 
+            })
+            email = EmailMultiAlternatives(
+                subject=subject,
+                body="Your booking confirmation to repair has been scheduled successfully.",
+                from_email=settings.EMAIL_HOST_USER,
+                to=[order.customer_email]
+            )
+            email.attach_alternative(html_content, "text/html")
+            email.send(fail_silently=False)
+            logger.info(f"Customer email sent to {order.customer_email}")
+        except Exception as e:
+            logger.error(f"Failed to send customer email: {str(e)}")
 
 class DiscountViewSet(viewsets.ModelViewSet):
     """

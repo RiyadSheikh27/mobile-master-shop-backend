@@ -111,14 +111,25 @@ class PhoneProblem(models.Model):
     
 class AdminOrderCreate(models.Model):
     """Admin order creation request"""
+    PART_TYPE_CHOICES = [
+        ('original', 'Original'),
+        ('duplicate', 'Duplicate'),
+    ]
     brand = models.ForeignKey(PhoneBrand, on_delete=models.CASCADE, related_name='admin_orders')
     model = models.ForeignKey(PhoneModel, on_delete=models.CASCADE, related_name='admin_orders')
     problem = models.ManyToManyField(PhoneProblem, related_name='admin_orders')
+    part_type = models.CharField(max_length=20, choices=PART_TYPE_CHOICES, default='original', blank=True, null=True)
     note = models.TextField(blank=True, null=True)
     customer_name = models.CharField(max_length=200, null=True, blank=True)
     customer_email = models.EmailField(null=True, blank=True)
     customer_phone = models.CharField(max_length=20, null=True, blank=True)
     customer_address = models.TextField(null=True, blank=True)
+    amount = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Fixed discount amount"
+    )
 
     schedule = models.DateTimeField(null=True, blank=True)
     
