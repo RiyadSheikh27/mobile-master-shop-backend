@@ -124,7 +124,9 @@ class AdminOrderCreateViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
 
         if serializer.is_valid():
-            serializer.save()
+            order = serializer.save()
+            if order.customer_email:
+                self.send_booking_email(order)
             return self.success("Order updated successfully", serializer.data)
 
         return self.error("Validation failed", serializer.errors)

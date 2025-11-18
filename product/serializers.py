@@ -57,10 +57,11 @@ class AdminOrderCreatePartTypeSerializer(serializers.Serializer):
 class AdminOrderCreateSerializer(serializers.ModelSerializer):
     problem = AdminOrderCreatePartTypeSerializer(many=True, write_only=True)
     problems_detail = serializers.SerializerMethodField(read_only=True)
+    brand_slug = serializers.CharField(source='brand.slug', read_only=True)
     
     class Meta:
         model = AdminOrderCreate
-        fields = ['id', 'brand', 'model', 'problem', 'problems_detail', 'note', 
+        fields = ['id', 'brand', 'brand_slug', 'model', 'problem', 'problems_detail', 'note', 
                   'customer_name', 'customer_email', 'customer_phone', 
                   'customer_address', 'amount', 'schedule', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
