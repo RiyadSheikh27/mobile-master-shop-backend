@@ -20,8 +20,8 @@ drf-yasg==1.21.11
 google-auth==2.41.1
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.2
-httplib2==0.31.0
 gunicorn==23.0.0
+httplib2==0.31.0
 idna==3.11
 inflection==0.5.1
 jsonschema==4.25.1

@@ -67,7 +67,6 @@ class SendOTPView(APIView):
         user.username_set = False
         user.save()
 
-        # Render HTML template
         html_content = render_to_string('emails/otp_email.html', {
             'email': email,
             'code': code
@@ -609,7 +608,7 @@ class StripeWebhookView(APIView):
             try:
                 email = EmailMultiAlternatives(
                     subject=subject,
-                    body="New payment received.",  # fallback text
+                    body="New payment received.", 
                     from_email=settings.EMAIL_HOST_USER,
                     to=list(admin_emails)
                 )

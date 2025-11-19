@@ -8,7 +8,11 @@ class SendOTPSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Email already taken.")
+            raise serializers.ValidationError({
+                "success": False,
+                "message": "Email already taken.",
+                "data": None
+        })
 
         return value
 
