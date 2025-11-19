@@ -15,9 +15,11 @@ services:
   web:
     build: .
     container_name: django_web
-    command: gunicorn app.wsgi:application --bind 0.0.0.0:8000
+    
     volumes:
       - .:/app
+    ports:     
+    - "8000:8000"
     expose:
       - "8000"
     environment:
@@ -45,3 +47,4 @@ services:
 
 volumes:
   postgres_data:
+
