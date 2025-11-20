@@ -933,6 +933,7 @@ class UnifiedAdminOrderListView(APIView):
             'total_amount': str(order.total_amount),
             'status': order.status,
             'payment_status': order.payment_status,
+            'schedule': order.schedule,
             'is_read': order.is_read,
             'created_at': order.created_at.isoformat(),
             'updated_at': order.updated_at.isoformat()
