@@ -24,7 +24,7 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['*' , '72.61.109.67']
 
 
 INSTALLED_APPS = [
@@ -212,6 +212,9 @@ CSRF_TRUSTED_ORIGINS = [
     'https://mlkphone.cloud',
     'http://mlkphone.com',
     'http://mlkphone.cloud',
+    "http://72.61.109.67",
+    "http://localhost",
+    "http://127.0.0.1",
 ]
 
 

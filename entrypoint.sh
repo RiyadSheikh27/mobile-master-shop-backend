@@ -21,4 +21,4 @@ python manage.py migrate --noinput
 echo "Starting Gunicorn..."
 gunicorn app.wsgi:application --bind 0.0.0.0:8000 --workers 3
 
-#docker exec -it django_web bash
+# docker exec -it django_web bash
