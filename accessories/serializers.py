@@ -14,7 +14,7 @@ class AcsProductListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'subtitle', 'slug', 'picture',
             'main_amount', 'discounted_amount', 'final_price', 'discount_percentage',
-            'stock_quantity', 'description_title', 'description', 'is_in_stock', 'is_featured',
+            'stock_quantity', 'description_title', 'description', 'is_in_stock', 'is_featured', 'is_active',
             'created_at'
         ]
 
@@ -32,7 +32,7 @@ class AcsProductDetailSerializer(serializers.ModelSerializer):
             'id', 'title', 'subtitle', 'slug', 'picture',
             'main_amount', 'discounted_amount', 'final_price', 'discount_percentage',
             'description_title', 'description',
-            'stock_quantity', 'is_in_stock', 'is_featured',
+            'stock_quantity', 'is_in_stock', 'is_featured', 'is_active',
             'average_rating', 'reviews_count',
             'created_at', 'updated_at'
         ]
@@ -54,7 +54,7 @@ class AcsProductCreateUpdateSerializer(serializers.ModelSerializer):
             'title', 'subtitle', 'picture',
             'main_amount', 'discounted_amount',
             'description_title', 'description',
-            'stock_quantity', 'is_featured'
+            'stock_quantity', 'is_featured', 'is_active',
         ]
 
 

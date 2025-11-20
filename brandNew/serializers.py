@@ -53,7 +53,7 @@ class PhoneModelListSerializer(serializers.ModelSerializer):
             'brand', 'brand_name', 'brand_slug',
             'ram', 'memory', 'description_title', 'description',
             'main_amount', 'discounted_amount', 'final_price', 'discount_percentage',
-            'stock_quantity', 'total_stock', 'rank',
+            'stock_quantity', 'total_stock', 'rank', 'is_active',
             'is_in_stock', 'is_featured', 'created_at'
         ]
 
@@ -71,7 +71,7 @@ class PhoneModelDetailSerializer(serializers.ModelSerializer):
             'brand', 'brand_name', 'brand_slug',
             'ram', 'memory', 'description_title', 'description',
             'main_amount', 'discounted_amount', 'final_price', 'discount_percentage',
-            'stock_quantity', 'total_stock', 'rank',
+            'stock_quantity', 'total_stock', 'rank', 'is_active',
             'is_in_stock', 'is_featured', 'created_at', 'updated_at'
         ]
 

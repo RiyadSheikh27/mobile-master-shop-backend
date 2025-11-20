@@ -31,7 +31,7 @@ class AcsProductViewSet(viewsets.ModelViewSet):
         return AcsProductListSerializer
 
     def get_queryset(self):
-        queryset = AcsProduct.objects.filter(is_active=True).prefetch_related('reviews')
+        queryset = AcsProduct.objects.prefetch_related('reviews')
         
         in_stock = self.request.query_params.get('in_stock')
         if in_stock and in_stock.lower() == 'true':

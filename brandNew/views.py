@@ -260,7 +260,7 @@ class NewPhoneModelViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_400_BAD_REQUEST)
 
     def get_queryset(self):
-        queryset = NewPhoneModel.objects.filter(is_active=True).select_related('brand').prefetch_related(
+        queryset = NewPhoneModel.objects.select_related('brand').prefetch_related(
             'colors', 'reviews', 'stock_management', 'stock_management__color'
         )
         
